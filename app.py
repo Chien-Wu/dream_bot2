@@ -7,8 +7,8 @@ from linebot.v3.messaging import MessagingApi, Configuration, ApiClient, ReplyMe
 from linebot.v3.webhook import WebhookHandler, MessageEvent
 from line_helper import handle_line_message
 
-LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN", "YOUR_LINE_CHANNEL_ACCESS_TOKEN")
-LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "YOUR_LINE_CHANNEL_SECRET")
+LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 
 app = Flask(__name__)
 

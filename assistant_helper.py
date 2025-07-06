@@ -73,7 +73,7 @@ class AssistantClient:
         if not assistant_msgs:
             logger.error("在 thread 中沒有找到 assistant 訊息")
             return None
-        last = assistant_msgs[-1]
+        last = assistant_msgs[0]
         content = last.content
         if content and hasattr(content[0], "text") and hasattr(content[0].text, "value"):
             return content[0].text.value
