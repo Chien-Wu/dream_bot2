@@ -11,6 +11,8 @@ try:
 except ImportError:
     OpenAIError = Exception
 
+from tools.messy_checker import is_messy
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID", "")
 MAX_POLL_RETRIES = int(os.getenv("OPENAI_POLL_MAX_RETRIES", "30"))
@@ -90,7 +92,10 @@ class AssistantClient:
                 return "抱歉，AI 回應逾時，請稍後再試。"
 
             reply = self._fetch_latest_assistant_reply(thread_id)
-            return reply or "抱歉，AI 未產生可用回覆。"
+            if is_messy(reply):
+                logger.error("assistant 回傳亂碼或非預期內容：%s", reply)
+                reply = "系統回應異常，請稍後再試。"
+            return reply
 
         except OpenAIError:
             logger.exception("OpenAI API 呼叫失敗")

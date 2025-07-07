@@ -30,7 +30,7 @@ class BufferManager:
         buf = self.buffers.get(user_id)
         if buf:
             buf["timer"].cancel()
-            buf["text"] += text
+            buf["text"] += "\n" + text
             buf["reply_token"] = reply_token
         else:
             buf = {

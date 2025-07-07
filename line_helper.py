@@ -17,7 +17,6 @@ def handle_line_message(event: MessageEvent, messaging_api: MessagingApi) -> Non
         
         user_input = event.message.text.strip()
         if not user_input:
-            logger.debug("忽略空文字訊息")
             return
         
         buffer_manager.add_message(
