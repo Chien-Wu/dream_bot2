@@ -12,6 +12,7 @@ except ImportError:
     OpenAIError = Exception
 
 from tools.messy_checker import is_messy
+from tools.clean_ref import clean_references
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_ASSISTANT_ID = os.getenv("OPENAI_ASSISTANT_ID", "")
@@ -93,8 +94,8 @@ class AssistantClient:
 
             reply = self._fetch_latest_assistant_reply(thread_id)
             if is_messy(reply):
-                logger.error("assistant 回傳亂碼或非預期內容：%s", reply)
-                reply = "系統回應異常，請稍後再試。"
+                logger.error("assistant 回傳疑似亂碼或非預期內容：%s", reply)
+            reply = clean_references(reply)
             return reply
 
         except OpenAIError:

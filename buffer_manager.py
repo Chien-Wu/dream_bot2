@@ -8,7 +8,6 @@ import assistant_helper
 
 
 def _split_text(text: str, max_len: int = 1000):
-    """把過長的回覆拆分成多段，避免超過 LINE API 字數限制"""
     return [text[i:i+max_len] for i in range(0, len(text), max_len)]
 
 
@@ -63,11 +62,11 @@ class BufferManager:
         messaging_api: MessagingApi = buf["messaging_api"]
 
         try:
-            # 1) 立刻回覆一個「處理中」訊息，消耗 reply_token
+            # 立刻回覆一個「處理中」訊息，消耗 reply_token
             messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=reply_token,
-                    messages=[LineTextMessage(text="🔄 正在處理，請稍候...")]
+                    messages=[LineTextMessage(text="🔄 開始處理，請稍候...")]
                 )
             )
 
