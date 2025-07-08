@@ -7,6 +7,8 @@ from linebot.v3.messaging import MessagingApi, Configuration, ApiClient, ReplyMe
 from linebot.v3.webhook import WebhookHandler, MessageEvent
 from line_helper import handle_line_message
 
+from db.db_init import init_user_threads_table
+
 LINE_CHANNEL_ACCESS_TOKEN = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET")
 
@@ -32,4 +34,5 @@ def handle_message(event):
     handle_line_message(event, messaging_api)
 
 if __name__ == "__main__":
+    init_user_threads_table()
     app.run(host='0.0.0.0', port=5001)
