@@ -1,0 +1,23 @@
+import os
+from linebot.v3.messaging import MessagingApi, PushMessageRequest, TextMessage
+
+ADMIN_USER_ID = os.getenv("ADMIN_USER_ID", "U35194e4ec4a34d20c3b9109c8a5aee34")
+
+def notify_admin(messaging_api: MessagingApi, user_id: str, user_msg: str, ai_reply: str = ""):
+    admin_text = (
+        f"[人工接管通知]\n"
+        f"有一則訊息 AI 無法處理，請人工介入：\n"
+        f"使用者ID: {user_id}\n"
+        f"用戶訊息: {user_msg}\n"
+        f"AI 建議回覆: {ai_reply or 'AI 無法判斷或未回應'}"
+    )
+
+    try:
+        messaging_api.push_message(
+            PushMessageRequest(
+                to=ADMIN_USER_ID,
+                messages=[TextMessage(text=admin_text)]
+            )
+        )
+    except Exception as e:
+        print("推送管理者通知失敗：", e)
