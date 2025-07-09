@@ -12,6 +12,28 @@ logger = logging.getLogger(__name__)
 
 def handle_line_message(event: MessageEvent, messaging_api: MessagingApi) -> None:
     try:
+        message_type = type(event.message).__name__
+        print(message_type)
+
+        if message_type == "StickerMessageContent":
+            logger.debug("忽略貼圖訊息")
+            return
+
+        if message_type == "ImageMessageContent":
+            notify_admin(
+                messaging_api=messaging_api,
+                user_id=event.source.user_id,
+                user_msg="使用者傳送了一張圖片",
+                ai_reply="系統自動通知，請人工介入處理"
+            )
+            messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=event.reply_token,
+                    messages=[LineTextMessage(text="已為您通知管理者，請稍候。")]
+                )
+            )
+            return
+        
         if not hasattr(event.message, 'text'):
             logger.debug("忽略非文字訊息: %s", type(event.message))
             return
