@@ -2,6 +2,7 @@ import os
 import time
 import logging
 from typing import Optional, Callable
+import json
 
 import openai
 import thread_manager
@@ -30,6 +31,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+# ============ 主 AssistantClient ============
 class AssistantClient:
     def __init__(self, assistant_id: str = OPENAI_ASSISTANT_ID) -> None:
         self.assistant_id = assistant_id
@@ -85,9 +87,6 @@ class AssistantClient:
             return None
 
     def get_assistant_reply(self, user_id: str, user_input: str) -> str:
-        """
-        只取得原始 assistant 回覆內容（JSON 格式字串）。
-        """
         try:
             thread_id = self._get_or_create_thread(user_id)
             self._send_user_message(thread_id, user_input)
@@ -112,18 +111,29 @@ class AssistantClient:
         self,
         user_id: str,
         user_input: str,
+        messaging_api=None,
         notify_admin_func: Callable = notify_admin
     ) -> str:
-        raw_reply = self.get_assistant_reply(user_id, user_input)
+        raw_reply = client.get_assistant_reply(user_id, user_input)
         text, confidence = parse_assistant_response(raw_reply)
-        if confidence < 0.8:
+        text = text + "(confidence"+str(confidence)+")"
+        if confidence < 0.83:
             try:
-                notify_admin_func(user_id=user_id, user_input=user_input, ai_reply=text, confidence=confidence)
-            except Exception as e:
+                if messaging_api is not None:
+                    notify_admin_func(
+                        messaging_api=messaging_api,
+                        user_id=user_id,
+                        user_msg=user_input,
+                        ai_reply=text,
+                        confidence=confidence
+                    )
+                else:
+                    logger.warning("通知管理員失敗：未提供 messaging_api 物件")
+            except Exception:
                 logger.exception("通知管理員時發生錯誤")
             return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
         else:
-            return text+"confidence("+str(confidence)+")" if text else "抱歉，AI 暫無回應。"
+            return text if text else "抱歉，AI 暫無回應。"
 
     def reset_user_thread(self, user_id: str) -> bool:
         try:
@@ -141,8 +151,18 @@ client = AssistantClient()
 def get_assistant_reply(user_id: str, user_input: str) -> str:
     return client.get_assistant_reply(user_id, user_input)
 
-def get_final_reply(user_id: str, user_input: str, notify_admin_func=notify_admin) -> str:
-    return client.get_final_reply(user_id, user_input, notify_admin_func=notify_admin_func)
+def get_final_reply(
+    user_id: str,
+    user_input: str,
+    messaging_api=None,
+    notify_admin_func=notify_admin
+) -> str:
+    return client.get_final_reply(
+        user_id=user_id,
+        user_input=user_input,
+        messaging_api=messaging_api,
+        notify_admin_func=notify_admin_func
+    )
 
 def reset_user_thread(user_id: str) -> bool:
     return client.reset_user_thread(user_id)

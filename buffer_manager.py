@@ -62,7 +62,7 @@ class BufferManager:
         messaging_api: MessagingApi = buf["messaging_api"]
 
         try:
-            reply = assistant_helper.get_final_reply(user_id, full_text) or "抱歉，AI 暫無回應。"
+            reply = assistant_helper.get_final_reply(user_id, full_text, messaging_api=messaging_api) or "抱歉，AI 暫無回應。"
             chunks = _split_text(reply)
 
             # 第一段用 reply_message（消耗 token）
