@@ -2,7 +2,6 @@ import os
 import time
 import logging
 from typing import Optional, Callable
-import json
 
 import openai
 import thread_manager

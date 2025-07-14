@@ -10,10 +10,15 @@ def notify_admin(
     ai_reply: str = "",
     confidence: float = None
 ):
+    try:
+        profile = messaging_api.get_profile(user_id)
+        user_name = profile.display_name
+    except Exception:
+        user_name = "(無法取得)"
+
     admin_text = (
         "[人工接管通知]\n"
-        "AI 無法自信回覆此則訊息，請人工處理。\n"
-        f"【使用者ID】{user_id}\n"
+        f"【使用者】{user_name}（{user_id}）\n"
         f"【用戶訊息】{user_msg}\n"
         f"【AI 建議回覆】{ai_reply or 'AI 無法判斷或未回應'}\n"
         f"【AI 信心分數】{confidence if confidence is not None else '未知'}"

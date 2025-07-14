@@ -65,14 +65,12 @@ class BufferManager:
             reply = assistant_helper.get_final_reply(user_id, full_text, messaging_api=messaging_api) or "抱歉，AI 暫無回應。"
             chunks = _split_text(reply)
 
-            # 第一段用 reply_message（消耗 token）
             messaging_api.reply_message(
                 ReplyMessageRequest(
                     reply_token=reply_token,
                     messages=[LineTextMessage(text=chunks[0])]
                 )
             )
-            # 其餘段落用 push_message（token 只能用一次）
             for chunk in chunks[1:]:
                 messaging_api.push_message(
                     PushMessageRequest(

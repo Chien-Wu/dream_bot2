@@ -11,6 +11,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def handle_line_message(event: MessageEvent, messaging_api: MessagingApi) -> None:
+    
+    #忽略群組訊息
+    if hasattr(event.source, "group_id") and event.source.group_id:
+            return
+    if hasattr(event.source, "room_id") and event.source.room_id:
+            return
     try:
         message_type = type(event.message).__name__
         print(message_type)
