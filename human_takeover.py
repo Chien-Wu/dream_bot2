@@ -20,9 +20,11 @@ def notify_admin(
         "[人工接管通知]\n"
         f"【使用者】{user_name}（{user_id}）\n"
         f"【用戶訊息】{user_msg}\n"
-        f"【AI 建議回覆】{ai_reply or 'AI 無法判斷或未回應'}\n"
-        f"【AI 信心分數】{confidence if confidence is not None else '未知'}"
     )
+    if ai_reply:
+        admin_text += f"【AI 建議回覆】{ai_reply}\n"
+    if confidence is not None:
+        admin_text += f"【AI 信心分數】{confidence}\n"
 
     try:
         messaging_api.push_message(

@@ -3,9 +3,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from flask import Flask, request, abort
+from linebot.v3 import WebhookHandler
 from linebot.v3.messaging import MessagingApi, Configuration, ApiClient, ReplyMessageRequest
-from linebot.v3.webhook import WebhookHandler, MessageEvent
+from linebot.v3.webhooks import MessageEvent, FollowEvent
 from line_helper import handle_line_message
+from human_takeover import notify_admin
 
 from db.db_init import init_user_threads_table
 
@@ -32,6 +34,19 @@ def callback():
 @handler.add(MessageEvent)
 def handle_message(event):
     handle_line_message(event, messaging_api)
+
+@handler.add(FollowEvent)
+def handle_follow(event):
+    try:
+        user_id = event.source.user_id
+        notify_admin(
+            messaging_api=messaging_api,
+            user_id=user_id,
+            user_msg="新用戶加入 LINE Bot"
+        )
+    except Exception as e:
+        import logging
+        logging.exception("處理新用戶 FollowEvent 時發生錯誤：%s", e)
 
 if __name__ == "__main__":
     init_user_threads_table()

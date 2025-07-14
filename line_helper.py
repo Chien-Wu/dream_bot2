@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def handle_line_message(event: MessageEvent, messaging_api: MessagingApi) -> None:
-    
+
     #忽略群組訊息
     if hasattr(event.source, "group_id") and event.source.group_id:
             return
@@ -52,8 +52,7 @@ def handle_line_message(event: MessageEvent, messaging_api: MessagingApi) -> Non
             notify_admin(
                 messaging_api=messaging_api,
                 user_id=event.source.user_id,
-                user_msg=user_input,
-                ai_reply="使用者主動要求轉人工"
+                user_msg=user_input
             )
             messaging_api.reply_message(
                 ReplyMessageRequest(

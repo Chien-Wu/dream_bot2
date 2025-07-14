@@ -29,8 +29,6 @@ openai.api_key = OPENAI_API_KEY
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
-# ============ 主 AssistantClient ============
 class AssistantClient:
     def __init__(self, assistant_id: str = OPENAI_ASSISTANT_ID) -> None:
         self.assistant_id = assistant_id
@@ -144,7 +142,6 @@ class AssistantClient:
             return False
 
 
-# ============ 封裝導出 ============
 client = AssistantClient()
 
 def get_assistant_reply(user_id: str, user_input: str) -> str:
