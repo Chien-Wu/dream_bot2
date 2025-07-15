@@ -173,3 +173,6 @@ temp/
 # Security reports
 bandit-report.json
 safety-report.json
+
+# Claude Code
+.claude
