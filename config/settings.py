@@ -51,6 +51,14 @@ class OpenAIConfig:
 
 
 @dataclass
+class MessageBufferConfig:
+    """Message buffering configuration settings."""
+    timeout: float = float(os.getenv('MESSAGE_BUFFER_TIMEOUT', '10.0'))
+    max_size: int = int(os.getenv('MESSAGE_BUFFER_MAX_SIZE', '10'))
+    min_length: int = int(os.getenv('MESSAGE_BUFFER_MIN_LENGTH', '50'))
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     environment: str = os.getenv('ENVIRONMENT', 'development')
@@ -63,11 +71,13 @@ class AppConfig:
     database: DatabaseConfig = None
     line: LineConfig = None
     openai: OpenAIConfig = None
+    message_buffer: MessageBufferConfig = None
     
     def __post_init__(self):
         self.database = DatabaseConfig()
         self.line = LineConfig()
         self.openai = OpenAIConfig()
+        self.message_buffer = MessageBufferConfig()
 
 
 # Global configuration instance

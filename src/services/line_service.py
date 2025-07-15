@@ -2,6 +2,8 @@
 LINE messaging service for handling LINE Bot interactions.
 """
 from typing import List, Optional
+import time
+import re
 
 from linebot.v3.messaging import (
     MessagingApi, Configuration, ApiClient, 
@@ -26,25 +28,119 @@ class LineService:
         line_config = Configuration(access_token=self.config.channel_access_token)
         self.messaging_api = MessagingApi(ApiClient(line_config))
     
+    def _split_text_by_chinese_period(self, text: str) -> List[str]:
+        """
+        Split text by Chinese periods (。) and clean up empty segments.
+        
+        Args:
+            text: Text to split
+            
+        Returns:
+            List of text segments
+        """
+        # Split by Chinese period and filter out empty strings
+        segments = [segment.strip() for segment in text.split('。') if segment.strip()]
+        
+        # If no Chinese periods found, return original text as single segment
+        if len(segments) <= 1:
+            return [text.strip()]
+            
+        # Add period back to each segment except the last one (if it doesn't end with punctuation)
+        result = []
+        for i, segment in enumerate(segments):
+            if i < len(segments) - 1:
+                # Add period back to all segments except last
+                result.append(segment + '。')
+            else:
+                # Last segment - only add period if original text ended with one
+                if text.rstrip().endswith('。'):
+                    result.append(segment + '。')
+                else:
+                    result.append(segment)
+        
+        return result
+
     def reply_message(self, reply_token: str, text: str) -> None:
         """
         Reply to a message using reply token.
+        Splits long text by Chinese periods and sends as separate messages.
         
         Args:
             reply_token: LINE reply token
             text: Message text to send
         """
         try:
-            self.messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[LineTextMessage(text=text)]
-                )
-            )
-            logger.info(f"Replied to message with token: {reply_token[:10]}...")
+            # Split text by Chinese periods
+            text_segments = self._split_text_by_chinese_period(text)
             
+            if len(text_segments) == 1:
+                # Single message - use reply
+                self.messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[LineTextMessage(text=text_segments[0])]
+                    )
+                )
+                logger.info(f"Replied to message with token: {reply_token[:10]}...")
+            else:
+                # Multiple segments - reply with first, then push the rest
+                # Reply with first segment
+                self.messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[LineTextMessage(text=text_segments[0])]
+                    )
+                )
+                logger.info(f"Replied with first segment: {reply_token[:10]}...")
+                
+                # Note: We need user_id to push additional messages
+                # This will be handled in reply_message_to_user method
+                
         except Exception as e:
             logger.error(f"Failed to reply message: {e}")
+            raise LineAPIError(f"Reply failed: {e}")
+
+    def reply_message_to_user(self, reply_token: str, user_id: str, text: str) -> None:
+        """
+        Reply to a message and send additional segments as push messages.
+        
+        Args:
+            reply_token: LINE reply token
+            user_id: LINE user ID for push messages
+            text: Message text to send
+        """
+        try:
+            # Split text by Chinese periods
+            text_segments = self._split_text_by_chinese_period(text)
+            
+            if len(text_segments) == 1:
+                # Single message - use reply
+                self.messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[LineTextMessage(text=text_segments[0])]
+                    )
+                )
+                logger.info(f"Replied to message with token: {reply_token[:10]}...")
+            else:
+                # Multiple segments - reply with first, then push the rest
+                # Reply with first segment
+                self.messaging_api.reply_message(
+                    ReplyMessageRequest(
+                        reply_token=reply_token,
+                        messages=[LineTextMessage(text=text_segments[0])]
+                    )
+                )
+                logger.info(f"Replied with first segment: {reply_token[:10]}...")
+                
+                # Push remaining segments with small delay
+                for i, segment in enumerate(text_segments[1:], 1):
+                    time.sleep(0.5)  # Small delay between messages
+                    self.push_message(user_id, segment)
+                    logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to reply message to user: {e}")
             raise LineAPIError(f"Reply failed: {e}")
     
     def push_message(self, user_id: str, text: str) -> None:
@@ -67,6 +163,29 @@ class LineService:
         except Exception as e:
             logger.error(f"Failed to push message to {user_id}: {e}")
             raise LineAPIError(f"Push failed: {e}")
+
+    def push_message_with_split(self, user_id: str, text: str) -> None:
+        """
+        Push a message to a user, splitting by Chinese periods if needed.
+        
+        Args:
+            user_id: LINE user ID
+            text: Message text to send
+        """
+        try:
+            # Split text by Chinese periods
+            text_segments = self._split_text_by_chinese_period(text)
+            
+            # Send all segments as push messages with delay
+            for i, segment in enumerate(text_segments):
+                if i > 0:  # Add delay between messages
+                    time.sleep(0.5)
+                self.push_message(user_id, segment)
+                logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
+                
+        except Exception as e:
+            logger.error(f"Failed to push split message to {user_id}: {e}")
+            raise LineAPIError(f"Push split failed: {e}")
     
     def notify_admin(self, user_id: str, user_msg: str, 
                     ai_reply: str = None, confidence: float = None) -> None:
