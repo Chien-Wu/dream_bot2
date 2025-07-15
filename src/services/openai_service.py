@@ -2,6 +2,7 @@
 OpenAI service for handling AI assistant interactions.
 """
 import time
+import json
 from typing import Optional
 
 import openai
@@ -10,6 +11,7 @@ from config import config
 from src.utils import setup_logger, OpenAIError, TimeoutError
 from src.models import AIResponse
 from src.services.database_service import DatabaseService
+from src.services.function_handler import FunctionHandler
 
 
 logger = setup_logger(__name__)
@@ -18,9 +20,10 @@ logger = setup_logger(__name__)
 class OpenAIService:
     """Service for OpenAI Assistant API interactions."""
     
-    def __init__(self, database_service: DatabaseService):
+    def __init__(self, database_service: DatabaseService, function_handler: FunctionHandler = None):
         self.config = config.openai
         self.db = database_service
+        self.function_handler = function_handler
         openai.api_key = self.config.api_key
         
     def _get_or_create_thread(self, user_id: str) -> str:
@@ -44,7 +47,7 @@ class OpenAIService:
                 openai.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
-                    content=f"我的基本資料：\n{user_context}"
+                    content=f"我的基本資料：\n{user_context}\n\n我的用戶ID是：{user_id}"
                 )
             
             self.db.set_user_thread_id(user_id, thread.id)
@@ -68,17 +71,23 @@ class OpenAIService:
     def _start_run(self, thread_id: str) -> str:
         """Start assistant run on thread."""
         try:
-            run = openai.beta.threads.runs.create(
-                thread_id=thread_id,
-                assistant_id=self.config.assistant_id
-            )
+            run_params = {
+                "thread_id": thread_id,
+                "assistant_id": self.config.assistant_id
+            }
+            
+            # Add function definitions if function handler is available
+            if self.function_handler:
+                run_params["tools"] = self.function_handler.get_function_definitions()
+            
+            run = openai.beta.threads.runs.create(**run_params)
             return run.id
         except Exception as e:
             logger.error(f"Failed to start run on thread {thread_id}: {e}")
             raise OpenAIError(f"Run start failed: {e}")
     
-    def _wait_for_completion(self, thread_id: str, run_id: str) -> bool:
-        """Wait for run completion with timeout."""
+    def _wait_for_completion(self, thread_id: str, run_id: str, user_id: str) -> bool:
+        """Wait for run completion with timeout and handle function calls."""
         for attempt in range(self.config.max_poll_retries):
             try:
                 run_status = openai.beta.threads.runs.retrieve(
@@ -88,6 +97,12 @@ class OpenAIService:
                 
                 if run_status.status == "completed":
                     return True
+                elif run_status.status == "requires_action":
+                    # Handle function calls
+                    if self._handle_function_calls(thread_id, run_id, run_status, user_id):
+                        continue  # Continue polling after handling function calls
+                    else:
+                        return False
                 elif run_status.status in ["failed", "cancelled", "expired"]:
                     logger.error(f"Run {run_id} failed with status: {run_status.status}")
                     return False
@@ -100,6 +115,54 @@ class OpenAIService:
         
         logger.warning(f"Run {run_id} timed out after {self.config.max_poll_retries} attempts")
         return False
+    
+    def _handle_function_calls(self, thread_id: str, run_id: str, run_status, user_id: str) -> bool:
+        """Handle function calls from the assistant."""
+        try:
+            if not self.function_handler:
+                logger.error("Function handler not available for function calls")
+                return False
+            
+            if not run_status.required_action:
+                return False
+            
+            tool_outputs = []
+            
+            # Process each tool call
+            for tool_call in run_status.required_action.submit_tool_outputs.tool_calls:
+                if tool_call.type == "function":
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+                    
+                    # Inject the actual user_id into function arguments if needed
+                    if 'user_id' in function_args and function_args['user_id'] in ['user', 'current_user', '']:
+                        function_args['user_id'] = user_id
+                    
+                    logger.info(f"Executing function: {function_name}")
+                    
+                    # Execute the function
+                    result = self.function_handler.execute_function(function_name, function_args)
+                    
+                    # Format the result for the assistant
+                    tool_outputs.append({
+                        "tool_call_id": tool_call.id,
+                        "output": json.dumps(result, ensure_ascii=False)
+                    })
+            
+            # Submit tool outputs back to the run
+            if tool_outputs:
+                openai.beta.threads.runs.submit_tool_outputs(
+                    thread_id=thread_id,
+                    run_id=run_id,
+                    tool_outputs=tool_outputs
+                )
+                logger.info(f"Submitted {len(tool_outputs)} tool outputs")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error handling function calls: {e}")
+            return False
     
     def _get_latest_response(self, thread_id: str) -> Optional[str]:
         """Get the latest assistant response from thread."""
@@ -147,7 +210,7 @@ class OpenAIService:
             run_id = self._start_run(thread_id)
             
             # Wait for completion
-            if not self._wait_for_completion(thread_id, run_id):
+            if not self._wait_for_completion(thread_id, run_id, user_id):
                 return AIResponse(
                     text="抱歉，AI 回應逾時，請稍後再試。",
                     confidence=0.0,
@@ -260,7 +323,7 @@ class OpenAIService:
                 openai.beta.threads.messages.create(
                     thread_id=thread_id,
                     role="user",
-                    content=f"我的最新基本資料：\n{user_context}"
+                    content=f"我的最新基本資料：\n{user_context}\n\n我的用戶ID是：{user_id}"
                 )
                 logger.info(f"Updated user context for {user_id} in thread {thread_id}")
                 

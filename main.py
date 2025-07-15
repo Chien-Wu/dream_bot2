@@ -10,6 +10,7 @@ from src.core import container, MessageProcessor
 from src.services import DatabaseService, OpenAIService, LineService
 from src.services.organization_analyzer import OrganizationDataAnalyzer
 from src.services.welcome_flow_manager import WelcomeFlowManager
+from src.services.function_handler import FunctionHandler
 from src.controllers import WebhookController
 
 
@@ -49,6 +50,7 @@ def setup_dependencies():
     # Register services as singletons
     container.register_singleton(DatabaseService)
     container.register_singleton(LineService)
+    container.register_singleton(FunctionHandler)
     container.register_singleton(OpenAIService)
     container.register_singleton(OrganizationDataAnalyzer)
     container.register_singleton(WelcomeFlowManager)
