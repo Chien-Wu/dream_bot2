@@ -134,6 +134,16 @@ class MessageProcessor:
                         notification_type="org_complete"
                     )
                 
+                # Update user context in ChatGPT if organization data is complete
+                if welcome_result.context_updated:
+                    try:
+                        # Get existing thread to update context
+                        thread_id = self.db.get_user_thread_id(message.user_id)
+                        if thread_id:
+                            self.ai._refresh_user_context(message.user_id, thread_id)
+                    except Exception as e:
+                        logger.error(f"Failed to update user context for {message.user_id}: {e}")
+                
                 # Block further processing
                 return
             
@@ -212,6 +222,16 @@ class MessageProcessor:
                         user_msg=welcome_result.admin_message,
                         notification_type="org_complete"
                     )
+                
+                # Update user context in ChatGPT if organization data is complete
+                if welcome_result.context_updated:
+                    try:
+                        # Get existing thread to update context
+                        thread_id = self.db.get_user_thread_id(user_id)
+                        if thread_id:
+                            self.ai._refresh_user_context(user_id, thread_id)
+                    except Exception as e:
+                        logger.error(f"Failed to update user context for {user_id}: {e}")
                 
                 # Block further processing
                 return

@@ -20,6 +20,7 @@ class WelcomeFlowResult:
     response_message: Optional[str] = None
     notify_admin: bool = False
     admin_message: Optional[str] = None
+    context_updated: bool = False
 
 
 class WelcomeFlowManager:
@@ -103,7 +104,8 @@ class WelcomeFlowManager:
                     should_block=True,
                     response_message=analysis_result['hint_message'],
                     notify_admin=True,
-                    admin_message="已完成組織資料填寫"
+                    admin_message="已完成組織資料填寫",
+                    context_updated=True
                 )
             else:
                 # Still missing data, send hint
