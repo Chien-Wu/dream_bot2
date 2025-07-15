@@ -78,8 +78,26 @@ class DatabaseService:
                 );
                 """
                 
+                # Organization data table
+                create_organization_sql = """
+                CREATE TABLE IF NOT EXISTS organization_data (
+                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci PRIMARY KEY,
+                    organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    completion_status ENUM('pending', 'partial', 'complete') DEFAULT 'pending',
+                    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_completion_status (completion_status),
+                    INDEX idx_created_at (created_at)
+                );
+                """
+                
                 cursor.execute(create_user_threads_sql)
                 cursor.execute(create_messages_sql)
+                cursor.execute(create_organization_sql)
                 conn.commit()
                 
                 logger.info("Database tables initialized successfully")
@@ -154,3 +172,106 @@ class DatabaseService:
             logger.error(f"Failed to log message for user {user_id}: {e}")
             # Don't raise exception for logging failures to avoid disrupting main flow
             pass
+    
+    def create_organization_record(self, user_id: str) -> None:
+        """Create a new organization data record for a user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO organization_data (user_id, completion_status) 
+                    VALUES (%s, 'pending')
+                    ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP
+                """, (user_id,))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Failed to create organization record for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to create organization record: {e}")
+    
+    def get_organization_record(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get organization data record for a user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(pymysql.cursors.DictCursor)
+                cursor.execute("""
+                    SELECT * FROM organization_data WHERE user_id = %s
+                """, (user_id,))
+                result = cursor.fetchone()
+                return result
+                
+        except Exception as e:
+            logger.error(f"Failed to get organization record for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to retrieve organization record: {e}")
+    
+    def update_organization_record(self, user_id: str, organization_data, 
+                                 completion_status: str, raw_message: str = None) -> None:
+        """Update organization data record."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Build update query based on provided data
+                update_fields = []
+                params = []
+                
+                if organization_data.organization_name:
+                    update_fields.append("organization_name = %s")
+                    params.append(organization_data.organization_name)
+                
+                if organization_data.service_city:
+                    update_fields.append("service_city = %s")
+                    params.append(organization_data.service_city)
+                
+                if organization_data.contact_info:
+                    update_fields.append("contact_info = %s")
+                    params.append(organization_data.contact_info)
+                
+                if organization_data.service_target:
+                    update_fields.append("service_target = %s")
+                    params.append(organization_data.service_target)
+                
+                update_fields.append("completion_status = %s")
+                params.append(completion_status)
+                
+                if raw_message:
+                    update_fields.append("raw_messages = CONCAT(COALESCE(raw_messages, ''), %s)")
+                    params.append(f"\n{raw_message}")
+                
+                update_fields.append("updated_at = CURRENT_TIMESTAMP")
+                params.append(user_id)
+                
+                query = f"""
+                    UPDATE organization_data 
+                    SET {', '.join(update_fields)}
+                    WHERE user_id = %s
+                """
+                
+                cursor.execute(query, params)
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Failed to update organization record for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to update organization record: {e}")
+    
+    def reset_organization_record(self, user_id: str) -> None:
+        """Reset organization data record for a user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE organization_data 
+                    SET organization_name = NULL,
+                        service_city = NULL,
+                        contact_info = NULL,
+                        service_target = NULL,
+                        completion_status = 'pending',
+                        raw_messages = NULL,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, (user_id,))
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Failed to reset organization record for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to reset organization record: {e}")

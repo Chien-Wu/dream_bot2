@@ -27,6 +27,37 @@ class LineService:
         self.config = config.line
         line_config = Configuration(access_token=self.config.channel_access_token)
         self.messaging_api = MessagingApi(ApiClient(line_config))
+        self._user_cache = {}  # Cache for user profiles
+    
+    def get_user_nickname(self, user_id: str) -> str:
+        """
+        Get user's display name/nickname from LINE profile.
+        
+        Args:
+            user_id: LINE user ID
+            
+        Returns:
+            User's display name or user_id if not available
+        """
+        try:
+            # Check cache first
+            if user_id in self._user_cache:
+                return self._user_cache[user_id]
+            
+            # Get profile from LINE API
+            profile = self.messaging_api.get_profile(user_id)
+            
+            display_name = profile.display_name
+            
+            # Cache the result
+            self._user_cache[user_id] = display_name
+            
+            return display_name
+            
+        except Exception as e:
+            logger.warning(f"Failed to get user profile for {user_id}: {e}")
+            # Return user_id as fallback
+            return user_id
     
     def _split_text_by_chinese_period(self, text: str) -> List[str]:
         """
@@ -188,7 +219,8 @@ class LineService:
             raise LineAPIError(f"Push split failed: {e}")
     
     def notify_admin(self, user_id: str, user_msg: str, 
-                    ai_reply: str = None, confidence: float = None) -> None:
+                    ai_reply: str = None, confidence: float = None,
+                    notification_type: str = "handover") -> None:
         """
         Notify admin about user interaction requiring attention.
         
@@ -197,14 +229,29 @@ class LineService:
             user_msg: User's original message
             ai_reply: AI's response (if any)
             confidence: AI confidence score (if any)
+            notification_type: Type of notification (handover, new_user, org_complete, image)
         """
         if not self.config.admin_user_id:
             logger.warning("Admin user ID not configured, skipping notification")
             return
             
         try:
-            notification_text = f"用戶需要人工協助\n\n"
-            notification_text += f"用戶ID: {user_id}\n"
+            # Get user nickname
+            user_nickname = self.get_user_nickname(user_id)
+            
+            # Set notification title based on type
+            titles = {
+                "handover": "用戶需要人工協助",
+                "new_user": "新用戶加入",
+                "org_complete": "組織資料完成建檔",
+                "image": "用戶傳送圖片",
+                "low_confidence": "AI回覆信心度偏低"
+            }
+            
+            title = titles.get(notification_type, "用戶需要人工協助")
+            
+            notification_text = f"{title}\n\n"
+            notification_text += f"用戶: {user_nickname}\n"
             notification_text += f"用戶訊息: {user_msg}\n"
             
             if ai_reply:
@@ -213,7 +260,7 @@ class LineService:
                 notification_text += f"信心度: {confidence:.2f}\n"
             
             self.push_message(self.config.admin_user_id, notification_text)
-            logger.info(f"Notified admin about user {user_id}")
+            logger.info(f"Notified admin about user {user_nickname} ({notification_type})")
             
         except Exception as e:
             logger.error(f"Failed to notify admin: {e}")

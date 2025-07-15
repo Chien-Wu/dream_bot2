@@ -38,7 +38,7 @@ def demonstrate_buffering_concept():
                 "AI: 關於優惠..."
             ],
             "with_buffer": [
-                "Combined: [用戶在 4.2 秒內發送了 5 條相關訊息]\n我想買\n蘋果手機\niPhone 15\n多少錢\n有優惠嗎\n[以上為完整對話內容，請整合理解並回覆]",
+                "Combined: '我想買 蘋果手機 iPhone 15 多少錢 有優惠嗎'",
                 "AI: 您想了解 iPhone 15 的價格和優惠資訊。目前 iPhone 15 的價格是..."
             ]
         },
@@ -51,7 +51,7 @@ def demonstrate_buffering_concept():
                 "AI: 什麼是什麼？"
             ],
             "with_buffer": [
-                "Combined: 請問你們的退貨政策是什麼",
+                "Combined: '請問你們的 退貨政策 是什麼'",
                 "AI: 我們的退貨政策如下：30天內可無條件退貨..."
             ]
         }

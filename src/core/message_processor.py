@@ -8,6 +8,7 @@ from typing import Optional
 from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, OpenAIService, LineService
+from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.core.message_queue import message_queue
 from src.core.message_buffer import message_buffer
 
@@ -21,10 +22,12 @@ class MessageProcessor:
     def __init__(self, 
                  database_service: DatabaseService,
                  openai_service: OpenAIService, 
-                 line_service: LineService):
+                 line_service: LineService,
+                 welcome_flow_manager: WelcomeFlowManager):
         self.db = database_service
         self.ai = openai_service
         self.line = line_service
+        self.welcome_flow = welcome_flow_manager
         
         # Set up message buffer callback
         message_buffer.set_process_callback(self._process_buffered_message)
@@ -111,6 +114,29 @@ class MessageProcessor:
                 logger.debug(f"Ignoring message type: {message.message_type}")
                 return
             
+            # Check welcome flow first (organization data collection)
+            welcome_result = self.welcome_flow.process_message(message.user_id, message.content)
+            
+            if welcome_result.should_block:
+                # Send response message if provided
+                if welcome_result.response_message and message.reply_token:
+                    self.line.reply_message_to_user(
+                        message.reply_token, 
+                        message.user_id, 
+                        welcome_result.response_message
+                    )
+                
+                # Notify admin if needed
+                if welcome_result.notify_admin and welcome_result.admin_message:
+                    self.line.notify_admin(
+                        user_id=message.user_id,
+                        user_msg=welcome_result.admin_message,
+                        notification_type="org_complete"
+                    )
+                
+                # Block further processing
+                return
+            
             # Check for handover request
             if self.line.is_handover_request(message.content):
                 self._handle_handover_request(message)
@@ -167,6 +193,28 @@ class MessageProcessor:
                 message_type="text",
                 reply_token=reply_token
             )
+            
+            # Check welcome flow first (organization data collection)
+            welcome_result = self.welcome_flow.process_message(user_id, combined_content)
+            
+            if welcome_result.should_block:
+                # Send response message if provided
+                if welcome_result.response_message:
+                    if reply_token:
+                        self.line.reply_message_to_user(reply_token, user_id, welcome_result.response_message)
+                    else:
+                        self.line.push_message_with_split(user_id, welcome_result.response_message)
+                
+                # Notify admin if needed
+                if welcome_result.notify_admin and welcome_result.admin_message:
+                    self.line.notify_admin(
+                        user_id=user_id,
+                        user_msg=welcome_result.admin_message,
+                        notification_type="org_complete"
+                    )
+                
+                # Block further processing
+                return
             
             # Check for handover request in combined content
             if self.line.is_handover_request(combined_content):
@@ -235,7 +283,8 @@ class MessageProcessor:
             self.line.notify_admin(
                 user_id=message.user_id,
                 user_msg="使用者傳送了一張圖片",
-                ai_reply="系統自動通知，請人工介入處理"
+                ai_reply="系統自動通知，請人工介入處理",
+                notification_type="image"
             )
             
             if message.reply_token:
@@ -253,7 +302,8 @@ class MessageProcessor:
         try:
             self.line.notify_admin(
                 user_id=message.user_id,
-                user_msg=message.content
+                user_msg=message.content,
+                notification_type="handover"
             )
             
             if message.reply_token:
@@ -284,7 +334,8 @@ class MessageProcessor:
                     user_id=message.user_id,
                     user_msg=message.content,
                     ai_reply=ai_response.text,
-                    confidence=ai_response.confidence
+                    confidence=ai_response.confidence,
+                    notification_type="low_confidence"
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin: {e}")

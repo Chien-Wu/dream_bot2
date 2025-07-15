@@ -221,9 +221,7 @@ class MessageBufferManager:
                 # Use the last message's reply token (most recent)
                 reply_token = messages[-1].message.reply_token if messages else None
                 
-                # Send acknowledgment if multiple messages
-                if len(messages) > 1 and self.process_callback:
-                    self._send_buffer_acknowledgment(user_id, len(messages))
+                # No acknowledgment needed - just process silently
                 
                 # Process combined message
                 if self.process_callback and combined_content:
@@ -251,13 +249,13 @@ class MessageBufferManager:
     
     def _combine_messages(self, messages: List[BufferedMessage]) -> str:
         """
-        Combine multiple messages into a coherent context.
+        Combine multiple messages into a single string.
         
         Args:
             messages: List of buffered messages
             
         Returns:
-            Combined message content
+            Combined message content as a single string
         """
         if not messages:
             return ""
@@ -268,51 +266,20 @@ class MessageBufferManager:
         # Sort by sequence to maintain order
         sorted_messages = sorted(messages, key=lambda x: x.sequence)
         
-        # Combine with context markers
+        # Simply join all messages with spaces
         combined_parts = []
-        
-        # Add timestamp context for the conversation
-        first_time = datetime.fromtimestamp(sorted_messages[0].timestamp)
-        last_time = datetime.fromtimestamp(sorted_messages[-1].timestamp)
-        duration = sorted_messages[-1].timestamp - sorted_messages[0].timestamp
-        
-        combined_parts.append(f"[用戶在 {duration:.1f} 秒內發送了 {len(messages)} 條相關訊息]")
-        
-        # Combine messages with natural flow
-        for i, buffered_msg in enumerate(sorted_messages, 1):
+        for buffered_msg in sorted_messages:
             content = buffered_msg.message.content.strip()
             if content:
-                combined_parts.append(f"{content}")
+                combined_parts.append(content)
         
-        combined_parts.append("[以上為完整對話內容，請整合理解並回覆]")
-        
-        result = "\n".join(combined_parts)
+        # Join with spaces to create one natural sentence
+        result = " ".join(combined_parts)
         
         logger.debug(f"Combined {len(messages)} messages into: {result[:100]}...")
         
         return result
     
-    def _send_buffer_acknowledgment(self, user_id: str, message_count: int):
-        """
-        Send acknowledgment that messages are being processed.
-        
-        Args:
-            user_id: User ID
-            message_count: Number of messages being processed
-        """
-        try:
-            # Import here to avoid circular imports
-            from src.core import container
-            from src.services import LineService
-            
-            line_service = container.resolve(LineService)
-            ack_message = f"正在整理您的 {message_count} 條訊息並回覆..."
-            
-            line_service.push_message(user_id, ack_message)
-            logger.debug(f"Sent buffer acknowledgment to user {user_id}")
-            
-        except Exception as e:
-            logger.error(f"Failed to send buffer acknowledgment: {e}")
     
     def get_buffer_status(self, user_id: str) -> dict:
         """

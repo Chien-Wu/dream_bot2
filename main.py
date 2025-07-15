@@ -8,6 +8,8 @@ from config import config
 from src.utils import setup_logger
 from src.core import container, MessageProcessor
 from src.services import DatabaseService, OpenAIService, LineService
+from src.services.organization_analyzer import OrganizationDataAnalyzer
+from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.controllers import WebhookController
 
 
@@ -34,7 +36,8 @@ def create_app() -> Flask:
     # Setup webhook controller
     message_processor = container.resolve(MessageProcessor)
     line_service = container.resolve(LineService)
-    webhook_controller = WebhookController(app, message_processor, line_service)
+    welcome_flow_manager = container.resolve(WelcomeFlowManager)
+    webhook_controller = WebhookController(app, message_processor, line_service, welcome_flow_manager)
     
     logger.info("Dream Line Bot initialization completed")
     return app
@@ -47,6 +50,8 @@ def setup_dependencies():
     container.register_singleton(DatabaseService)
     container.register_singleton(LineService)
     container.register_singleton(OpenAIService)
+    container.register_singleton(OrganizationDataAnalyzer)
+    container.register_singleton(WelcomeFlowManager)
     container.register_singleton(MessageProcessor)
 
 
