@@ -134,6 +134,7 @@ class LineService:
     def reply_message_to_user(self, reply_token: str, user_id: str, text: str) -> None:
         """
         Reply to a message and send additional segments as push messages.
+        Automatically falls back to push message if reply token is invalid.
         
         Args:
             reply_token: LINE reply token
@@ -144,35 +145,55 @@ class LineService:
             # Split text by Chinese periods
             text_segments = self._split_text_by_chinese_period(text)
             
-            if len(text_segments) == 1:
-                # Single message - use reply
-                self.messaging_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[LineTextMessage(text=text_segments[0])]
+            try:
+                if len(text_segments) == 1:
+                    # Single message - use reply
+                    self.messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[LineTextMessage(text=text_segments[0])]
+                        )
                     )
-                )
-                logger.info(f"Replied to message with token: {reply_token[:10]}...")
-            else:
-                # Multiple segments - reply with first, then push the rest
-                # Reply with first segment
-                self.messaging_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[LineTextMessage(text=text_segments[0])]
+                    logger.info(f"Replied to message with token: {reply_token[:10]}...")
+                else:
+                    # Multiple segments - reply with first, then push the rest
+                    # Reply with first segment
+                    self.messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[LineTextMessage(text=text_segments[0])]
+                        )
                     )
-                )
-                logger.info(f"Replied with first segment: {reply_token[:10]}...")
-                
-                # Push remaining segments with small delay
-                for i, segment in enumerate(text_segments[1:], 1):
-                    time.sleep(0.5)  # Small delay between messages
-                    self.push_message(user_id, segment)
-                    logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
+                    logger.info(f"Replied with first segment: {reply_token[:10]}...")
+                    
+                    # Push remaining segments with small delay
+                    for i, segment in enumerate(text_segments[1:], 1):
+                        time.sleep(0.5)  # Small delay between messages
+                        self.push_message(user_id, segment)
+                        logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
+                        
+            except Exception as reply_error:
+                # Check if it's a reply token error
+                if "Invalid reply token" in str(reply_error) or "reply token" in str(reply_error).lower():
+                    logger.warning(f"Reply token expired/invalid, falling back to push message")
+                    # Fallback: send all segments as push messages
+                    self.push_message_with_split(user_id, text)
+                else:
+                    # Re-raise other types of errors
+                    raise reply_error
                 
         except Exception as e:
-            logger.error(f"Failed to reply message to user: {e}")
-            raise LineAPIError(f"Reply failed: {e}")
+            # Final fallback check
+            if "Invalid reply token" in str(e) or "reply token" in str(e).lower():
+                logger.warning(f"Using push message fallback due to token issue")
+                try:
+                    self.push_message_with_split(user_id, text)
+                except Exception as push_error:
+                    logger.error(f"Push message fallback also failed: {push_error}")
+                    raise LineAPIError(f"Both reply and push failed: {e}")
+            else:
+                logger.error(f"Failed to reply message to user: {e}")
+                raise LineAPIError(f"Reply failed: {e}")
     
     def push_message(self, user_id: str, text: str) -> None:
         """

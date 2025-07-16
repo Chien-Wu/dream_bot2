@@ -53,8 +53,8 @@ class DatabaseService:
                 create_user_threads_sql = """
                 CREATE TABLE IF NOT EXISTS user_threads (
                     id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL UNIQUE,
-                    thread_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL UNIQUE,
+                    thread_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     is_active BOOLEAN DEFAULT TRUE,
@@ -67,10 +67,10 @@ class DatabaseService:
                 create_messages_sql = """
                 CREATE TABLE IF NOT EXISTS message_history (
                     id INT PRIMARY KEY AUTO_INCREMENT,
-                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-                    content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+                    content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                     message_type VARCHAR(20) DEFAULT 'text',
-                    ai_response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    ai_response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     confidence DECIMAL(3,2),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_user_id (user_id),
@@ -81,13 +81,13 @@ class DatabaseService:
                 # Organization data table
                 create_organization_sql = """
                 CREATE TABLE IF NOT EXISTS organization_data (
-                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci PRIMARY KEY,
-                    organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
-                    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
-                    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
-                    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+                    organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     completion_status ENUM('pending', 'partial', 'complete') DEFAULT 'pending',
-                    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+                    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_completion_status (completion_status),
