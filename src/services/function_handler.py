@@ -3,8 +3,8 @@ Function handler for ChatGPT assistant function calls.
 Defines and executes functions that the assistant can call.
 """
 import json
-import requests
 import openai
+from openai import OpenAI
 from typing import Dict, Any, Callable, List
 from datetime import datetime
 
@@ -12,6 +12,7 @@ from config import config
 from src.utils import setup_logger
 from src.services.database_service import DatabaseService
 from src.services.line_service import LineService
+from src.services.web_search_service import WebSearchService
 
 
 logger = setup_logger(__name__)
@@ -23,6 +24,9 @@ class FunctionHandler:
     def __init__(self, database_service: DatabaseService, line_service: LineService):
         self.db = database_service
         self.line = line_service
+        
+        # Initialize web search service (it will create its own OpenAI client)
+        self.web_search_service = WebSearchService()
         self.functions = self._register_functions()
     
     def _register_functions(self) -> Dict[str, Callable]:
@@ -480,128 +484,13 @@ class FunctionHandler:
             return {"error": f"無法更新組織資料: {str(e)}"}
     
     def _web_search(self, query: str, num_results: int = 5) -> Dict[str, Any]:
-        """Perform web search and analyze results with ChatGPT."""
+        """Perform web search using OpenAI web search service."""
         try:
-            # Step 1: Perform web search using DuckDuckGo (free alternative)
-            search_results = self._perform_search(query, num_results)
-            
-            if not search_results:
-                return {"error": "沒有找到搜尋結果"}
-            
-            # Step 2: Use ChatGPT to analyze and summarize the search results
-            analysis = self._analyze_search_results(query, search_results)
-            
-            return {
-                "query": query,
-                "summary": analysis,
-                "sources": search_results,
-                "total_results": len(search_results)
-            }
+            print(f"[DEBUG] Function handler calling web search with query: {query}")
+            result = self.web_search_service.search(query, num_results)
+            print(f"[DEBUG] Function handler received result: {result}")
+            return result
             
         except Exception as e:
             logger.error(f"Web search error: {e}")
             return {"error": f"搜尋失敗: {str(e)}"}
-    
-    def _perform_search(self, query: str, num_results: int) -> List[Dict[str, str]]:
-        """Perform web search using DuckDuckGo Instant Answer API."""
-        try:
-            # Use DuckDuckGo Instant Answer API (free, no API key required)
-            url = "https://api.duckduckgo.com/"
-            params = {
-                "q": query,
-                "format": "json",
-                "no_html": "1",
-                "skip_disambig": "1"
-            }
-            
-            response = requests.get(url, params=params, timeout=10)
-            response.raise_for_status()
-            
-            data = response.json()
-            results = []
-            
-            # Extract instant answer if available
-            if data.get("Abstract"):
-                results.append({
-                    "title": data.get("Heading", "摘要"),
-                    "snippet": data.get("Abstract", ""),
-                    "url": data.get("AbstractURL", ""),
-                    "source": data.get("AbstractSource", "DuckDuckGo")
-                })
-            
-            # Extract related topics
-            for topic in data.get("RelatedTopics", [])[:num_results-1]:
-                if isinstance(topic, dict) and topic.get("Text"):
-                    results.append({
-                        "title": topic.get("Text", "")[:100] + "...",
-                        "snippet": topic.get("Text", ""),
-                        "url": topic.get("FirstURL", ""),
-                        "source": "DuckDuckGo"
-                    })
-            
-            # If no results from DuckDuckGo, try alternative search
-            if not results:
-                results = self._fallback_search(query, num_results)
-            
-            return results[:num_results]
-            
-        except Exception as e:
-            logger.error(f"Search API error: {e}")
-            # Return fallback results
-            return self._fallback_search(query, num_results)
-    
-    def _fallback_search(self, query: str, num_results: int) -> List[Dict[str, str]]:
-        """Fallback search method when main search fails."""
-        # This is a simple fallback - in production you might use other APIs
-        return [{
-            "title": f"搜尋建議: {query}",
-            "snippet": f"建議您可以搜尋關於 '{query}' 的更多資訊。由於網路搜尋暫時無法使用，請嘗試直接搜尋相關的政府網站或官方資源。",
-            "url": "",
-            "source": "系統建議"
-        }]
-    
-    def _analyze_search_results(self, query: str, search_results: List[Dict[str, str]]) -> str:
-        """Use ChatGPT to analyze and summarize search results."""
-        try:
-            # Prepare content for analysis
-            content = f"搜尋查詢: {query}\n\n搜尋結果:\n"
-            for i, result in enumerate(search_results, 1):
-                content += f"{i}. 標題: {result['title']}\n"
-                content += f"   內容: {result['snippet']}\n"
-                content += f"   來源: {result['source']}\n\n"
-            
-            # Use ChatGPT to analyze the results
-            response = openai.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "你是一個專業的資訊分析師，專門為台灣的社福組織提供資訊分析。請根據搜尋結果提供準確、有用的摘要，特別關注與社會福利、補助、政策相關的資訊。"
-                    },
-                    {
-                        "role": "user", 
-                        "content": f"請分析以下搜尋結果並提供簡潔的摘要：\n\n{content}\n\n請提供：\n1. 主要發現\n2. 重要資訊摘要\n3. 對社福組織的相關性"
-                    }
-                ],
-                temperature=0.3,
-                max_tokens=800
-            )
-            
-            return response.choices[0].message.content
-            
-        except Exception as e:
-            logger.error(f"ChatGPT analysis error: {e}")
-            # Fallback to simple summary
-            return self._simple_summary(query, search_results)
-    
-    def _simple_summary(self, query: str, search_results: List[Dict[str, str]]) -> str:
-        """Simple fallback summary when ChatGPT analysis fails."""
-        summary = f"關於 '{query}' 的搜尋結果摘要：\n\n"
-        
-        for i, result in enumerate(search_results, 1):
-            summary += f"{i}. {result['title']}\n"
-            if result['snippet']:
-                summary += f"   {result['snippet'][:200]}...\n"
-            summary += "\n"
-        
-        return summary

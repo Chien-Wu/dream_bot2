@@ -5,7 +5,7 @@ import time
 import json
 from typing import Optional
 
-import openai
+from openai import OpenAI
 
 from config import config
 from src.utils import setup_logger, OpenAIError, TimeoutError
@@ -24,7 +24,12 @@ class OpenAIService:
         self.config = config.openai
         self.db = database_service
         self.function_handler = function_handler
-        openai.api_key = self.config.api_key
+        
+        # Initialize OpenAI client with v2 beta header
+        self.client = OpenAI(
+            api_key=self.config.api_key,
+            default_headers={"OpenAI-Beta": "assistants=v2"}
+        )
         
     def _get_or_create_thread(self, user_id: str) -> str:
         """Get existing thread or create new one for user."""
@@ -40,11 +45,11 @@ class OpenAIService:
             user_context = self._get_user_context(user_id)
             
             # Create thread with user context
-            thread = openai.beta.threads.create()
+            thread = self.client.beta.threads.create()
             
             # Add user context as first message if available
             if user_context:
-                openai.beta.threads.messages.create(
+                self.client.beta.threads.messages.create(
                     thread_id=thread.id,
                     role="user",
                     content=f"我的基本資料：\n{user_context}\n\n我的用戶ID是：{user_id}"
@@ -59,7 +64,7 @@ class OpenAIService:
     def _send_message(self, thread_id: str, content: str) -> None:
         """Send user message to thread."""
         try:
-            openai.beta.threads.messages.create(
+            self.client.beta.threads.messages.create(
                 thread_id=thread_id,
                 role="user",
                 content=content
@@ -80,7 +85,7 @@ class OpenAIService:
             if self.function_handler:
                 run_params["tools"] = self.function_handler.get_function_definitions()
             
-            run = openai.beta.threads.runs.create(**run_params)
+            run = self.client.beta.threads.runs.create(**run_params)
             return run.id
         except Exception as e:
             logger.error(f"Failed to start run on thread {thread_id}: {e}")
@@ -90,7 +95,7 @@ class OpenAIService:
         """Wait for run completion with timeout and handle function calls."""
         for attempt in range(self.config.max_poll_retries):
             try:
-                run_status = openai.beta.threads.runs.retrieve(
+                run_status = self.client.beta.threads.runs.retrieve(
                     thread_id=thread_id, 
                     run_id=run_id
                 )
@@ -151,7 +156,7 @@ class OpenAIService:
             
             # Submit tool outputs back to the run
             if tool_outputs:
-                openai.beta.threads.runs.submit_tool_outputs(
+                self.client.beta.threads.runs.submit_tool_outputs(
                     thread_id=thread_id,
                     run_id=run_id,
                     tool_outputs=tool_outputs
@@ -167,7 +172,7 @@ class OpenAIService:
     def _get_latest_response(self, thread_id: str) -> Optional[str]:
         """Get the latest assistant response from thread."""
         try:
-            messages = openai.beta.threads.messages.list(thread_id=thread_id).data
+            messages = self.client.beta.threads.messages.list(thread_id=thread_id).data
             assistant_messages = [m for m in messages if m.role == "assistant"]
             
             if not assistant_messages:
@@ -320,7 +325,7 @@ class OpenAIService:
             
             if user_context:
                 # Add updated context message
-                openai.beta.threads.messages.create(
+                self.client.beta.threads.messages.create(
                     thread_id=thread_id,
                     role="user",
                     content=f"我的最新基本資料：\n{user_context}\n\n我的用戶ID是：{user_id}"
