@@ -9,7 +9,6 @@ from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, OpenAIService, LineService
 from src.services.welcome_flow_manager import WelcomeFlowManager
-from src.core.message_queue import message_queue
 from src.core.message_buffer import message_buffer
 
 
@@ -39,11 +38,6 @@ class MessageProcessor:
         Args:
             message: Incoming message to process
         """
-        # Add message to queue for rate limiting and duplicate detection
-        if not message_queue.add_message(message):
-            logger.debug(f"Message rejected by queue for user {message.user_id}")
-            return
-        
         # Try to buffer the message if it's short and incomplete
         if message_buffer.add_message(message):
             logger.debug(f"Message buffered for user {message.user_id}")
@@ -52,42 +46,11 @@ class MessageProcessor:
         # If not buffered, process normally
         # Start processing in background thread to avoid blocking
         threading.Thread(
-            target=self._process_user_messages,
-            args=(message.user_id,),
+            target=self._handle_single_message,
+            args=(message,),
             daemon=True
         ).start()
     
-    def _process_user_messages(self, user_id: str) -> None:
-        """
-        Process all queued messages for a user sequentially.
-        
-        Args:
-            user_id: User ID to process messages for
-        """
-        # Check if already processing for this user
-        if message_queue.is_user_processing(user_id):
-            logger.debug(f"Already processing messages for user {user_id}")
-            return
-        
-        message_queue.set_user_processing(user_id, True)
-        
-        try:
-            while True:
-                # Get next message from queue
-                message = message_queue.get_next_message(user_id)
-                if not message:
-                    break
-                
-                # Process the message
-                self._handle_single_message(message)
-                
-                # Add small delay between processing messages
-                time.sleep(0.5)
-                
-        except Exception as e:
-            logger.error(f"Error processing messages for user {user_id}: {e}")
-        finally:
-            message_queue.set_user_processing(user_id, False)
     
     def _handle_single_message(self, message: Message) -> None:
         """
@@ -152,10 +115,6 @@ class MessageProcessor:
                 self._handle_handover_request(message)
                 return
             
-            # Check queue size - if multiple messages queued, send acknowledgment
-            queue_size = message_queue.get_queue_size(message.user_id)
-            if queue_size > 1:
-                self._send_queue_acknowledgment(message, queue_size)
             
             # Get AI response
             ai_response = self.ai.get_response(message.user_id, message.content)
@@ -274,28 +233,6 @@ class MessageProcessor:
                     self.line.push_message(user_id, error_response)
             except Exception as error_send_error:
                 logger.error(f"Failed to send error response: {error_send_error}")
-    
-    def _send_queue_acknowledgment(self, message: Message, queue_size: int) -> None:
-        """
-        Send acknowledgment for queued messages.
-        
-        Args:
-            message: Current message being processed
-            queue_size: Number of messages in queue
-        """
-        try:
-            if queue_size <= 1:
-                return
-                
-            ack_message = f"收到您的訊息，目前有 {queue_size} 條訊息待處理，請稍候。"
-            
-            # Send as push message to avoid using reply token
-            self.line.push_message(message.user_id, ack_message)
-            
-            logger.info(f"Sent queue acknowledgment to user {message.user_id} (queue size: {queue_size})")
-            
-        except Exception as e:
-            logger.error(f"Failed to send queue acknowledgment: {e}")
     
     def _handle_image_message(self, message: Message) -> None:
         """Handle image messages by notifying admin."""
