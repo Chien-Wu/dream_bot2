@@ -41,8 +41,8 @@ class OpenAIConfig:
     """OpenAI API configuration settings."""
     api_key: Optional[str] = os.getenv('OPENAI_API_KEY')
     assistant_id: Optional[str] = os.getenv('OPENAI_ASSISTANT_ID')
-    max_poll_retries: int = int(os.getenv('OPENAI_POLL_MAX_RETRIES', '30'))
-    poll_interval: float = float(os.getenv('OPENAI_POLL_INTERVAL', '1.0'))
+    max_poll_retries: int = int(os.getenv('OPENAI_POLL_MAX_RETRIES', '120'))
+    poll_interval: float = float(os.getenv('OPENAI_POLL_INTERVAL', '2.0'))
     confidence_threshold: float = float(os.getenv('AI_CONFIDENCE_THRESHOLD', '0.83'))
     
     def __post_init__(self):
@@ -63,7 +63,7 @@ class SearchConfig:
     """Web search configuration settings."""
     default_num_results: int = int(os.getenv('SEARCH_DEFAULT_RESULTS', '5'))
     max_results: int = int(os.getenv('SEARCH_MAX_RESULTS', '10'))
-    timeout: float = float(os.getenv('SEARCH_TIMEOUT', '30.0'))
+    timeout: float = float(os.getenv('SEARCH_TIMEOUT', '120.0'))
 
 
 @dataclass

@@ -82,8 +82,8 @@ class OpenAIService:
             }
             
             # Add function definitions if function handler is available
-            if self.function_handler:
-                run_params["tools"] = self.function_handler.get_function_definitions()
+            # if self.function_handler:
+            #     run_params["tools"] = self.function_handler.get_function_definitions()
             
             run = self.client.beta.threads.runs.create(**run_params)
             return run.id
@@ -292,7 +292,7 @@ class OpenAIService:
             context_parts = []
             
             if org_record.get('organization_name'):
-                context_parts.append(f"單位名稱：{org_record['organization_name']}")
+                context_parts.append(f"單位全名：{org_record['organization_name']}")
             
             if org_record.get('service_city'):
                 context_parts.append(f"服務縣市：{org_record['service_city']}")

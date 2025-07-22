@@ -49,7 +49,7 @@ class FunctionHandler:
                 "type": "function",
                 "function": {
                     "name": "get_user_organization_info",
-                    "description": "獲取用戶的組織基本資料，包括單位名稱、服務縣市、聯絡人資訊、服務對象等",
+                    "description": "獲取用戶的組織基本資料，包括單位全名、服務縣市、聯絡人資訊、服務對象等",
                     "strict": True,
                     "parameters": {
                         "type": "object",
@@ -179,7 +179,7 @@ class FunctionHandler:
                 "type": "function",
                 "function": {
                     "name": "update_organization_data",
-                    "description": "更新用戶的組織基本資料，如單位名稱、服務縣市等",
+                    "description": "更新用戶的組織基本資料，如單位全名、服務縣市等",
                     "strict": True,
                     "parameters": {
                         "type": "object",
@@ -190,7 +190,7 @@ class FunctionHandler:
                             },
                             "organization_name": {
                                 "type": "string",
-                                "description": "新的單位名稱"
+                                "description": "新的單位全名"
                             },
                             "service_city": {
                                 "type": "string",

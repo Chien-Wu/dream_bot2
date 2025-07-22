@@ -85,13 +85,13 @@ class OrganizationDataAnalyzer:
         return f"""
 你是一個專門分析社福組織資料的助手。請從用戶訊息中提取以下資訊：
 
-1. 單位名稱 (organization_name)
+1. 單位全名 (organization_name)
 2. 服務縣市 (service_city) 
 3. 聯絡人職稱+姓名+電話 (contact_info)
 4. 服務對象 (service_target): 限定為 弱勢兒少、中年困境、孤獨長者、無助動物
 
 目前已有資料：
-- 單位名稱: {current_data.organization_name or "未提供"}
+- 單位全名: {current_data.organization_name or "未提供"}
 - 服務縣市: {current_data.service_city or "未提供"}
 - 聯絡人資訊: {current_data.contact_info or "未提供"}
 - 服務對象: {current_data.service_target or "未提供"}
@@ -99,7 +99,7 @@ class OrganizationDataAnalyzer:
 請以JSON格式回覆，包含：
 {{
   "extracted_data": {{
-    "organization_name": "提取到的單位名稱或null",
+    "organization_name": "提取到的單位全名或null",
     "service_city": "提取到的服務縣市或null",
     "contact_info": "提取到的聯絡人資訊或null",
     "service_target": "提取到的服務對象或null"
@@ -128,7 +128,7 @@ class OrganizationDataAnalyzer:
         missing = []
         
         if not data.organization_name:
-            missing.append("單位名稱")
+            missing.append("單位全名")
         if not data.service_city:
             missing.append("服務縣市")
         if not data.contact_info:
@@ -145,8 +145,8 @@ class OrganizationDataAnalyzer:
         
         hint = "感謝您的加入，請先提供以下資訊：\n"
         
-        if "單位名稱" in missing_fields:
-            hint += "1、單位名稱：\n"
+        if "單位全名" in missing_fields:
+            hint += "1、單位全名：\n"
         if "服務縣市" in missing_fields:
             hint += "2、服務縣市：\n"
         if "聯絡人職稱+姓名+電話" in missing_fields:
