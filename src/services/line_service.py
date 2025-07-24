@@ -59,9 +59,27 @@ class LineService:
             # Return user_id as fallback
             return user_id
     
-    def _split_text_by_chinese_period(self, text: str) -> List[str]:
+    def _clean_reference_brackets(self, text: str) -> str:
         """
-        Split text by Chinese periods (。) and clean up empty segments.
+        Clean reference brackets in the format 【訊息編號:搜尋結果編號†來源名稱】
+        
+        Args:
+            text: Text containing reference brackets to clean
+            
+        Returns:
+            Cleaned text without reference brackets
+        """
+        # Remove brackets with pattern 【...†...】
+        cleaned_text = re.sub(r'【[^】]*†[^】]*】', '', text)
+        
+        # Clean up any double spaces left behind and trim
+        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        
+        return cleaned_text
+    
+    def _split_text_by_sentence_endings(self, text: str) -> List[str]:
+        """
+        Split text by sentence ending punctuation marks including Chinese periods, question marks, and exclamation marks.
         
         Args:
             text: Text to split
@@ -69,40 +87,48 @@ class LineService:
         Returns:
             List of text segments
         """
-        # Split by Chinese period and filter out empty strings
-        segments = [segment.strip() for segment in text.split('。') if segment.strip()]
+        # Use regex to split by sentence endings while preserving the punctuation
+        # Split by: 。 ？ ！ ? !
+        sentence_pattern = r'([。？！?!])'
         
-        # If no Chinese periods found, return original text as single segment
+        # Split text and keep delimiters
+        parts = re.split(sentence_pattern, text)
+        
+        # Reconstruct sentences by combining text with their ending punctuation
+        segments = []
+        for i in range(0, len(parts) - 1, 2):
+            if i + 1 < len(parts):
+                # Combine text part with its punctuation
+                sentence = parts[i] + parts[i + 1]
+                sentence = sentence.strip()
+                if sentence:
+                    segments.append(sentence)
+        
+        # Handle case where text doesn't end with punctuation
+        if len(parts) % 2 == 1 and parts[-1].strip():
+            segments.append(parts[-1].strip())
+        
+        # If no sentences found or only one sentence, return original text
         if len(segments) <= 1:
             return [text.strip()]
-            
-        # Add period back to each segment except the last one (if it doesn't end with punctuation)
-        result = []
-        for i, segment in enumerate(segments):
-            if i < len(segments) - 1:
-                # Add period back to all segments except last
-                result.append(segment + '。')
-            else:
-                # Last segment - only add period if original text ended with one
-                if text.rstrip().endswith('。'):
-                    result.append(segment + '。')
-                else:
-                    result.append(segment)
         
-        return result
+        return segments
 
     def reply_message(self, reply_token: str, text: str) -> None:
         """
         Reply to a message using reply token.
-        Splits long text by Chinese periods and sends as separate messages.
+        Splits long text by sentence endings and sends as separate messages.
         
         Args:
             reply_token: LINE reply token
             text: Message text to send
         """
         try:
-            # Split text by Chinese periods
-            text_segments = self._split_text_by_chinese_period(text)
+            # Clean reference brackets first
+            cleaned_text = self._clean_reference_brackets(text)
+            
+            # Split text by sentence endings
+            text_segments = self._split_text_by_sentence_endings(cleaned_text)
             
             if len(text_segments) == 1:
                 # Single message - use reply
@@ -142,8 +168,11 @@ class LineService:
             text: Message text to send
         """
         try:
-            # Split text by Chinese periods
-            text_segments = self._split_text_by_chinese_period(text)
+            # Clean reference brackets first
+            cleaned_text = self._clean_reference_brackets(text)
+            
+            # Split text by sentence endings
+            text_segments = self._split_text_by_sentence_endings(cleaned_text)
             
             try:
                 if len(text_segments) == 1:
@@ -218,15 +247,18 @@ class LineService:
 
     def push_message_with_split(self, user_id: str, text: str) -> None:
         """
-        Push a message to a user, splitting by Chinese periods if needed.
+        Push a message to a user, splitting by sentence endings if needed.
         
         Args:
             user_id: LINE user ID
             text: Message text to send
         """
         try:
-            # Split text by Chinese periods
-            text_segments = self._split_text_by_chinese_period(text)
+            # Clean reference brackets first
+            cleaned_text = self._clean_reference_brackets(text)
+            
+            # Split text by sentence endings
+            text_segments = self._split_text_by_sentence_endings(cleaned_text)
             
             # Send all segments as push messages with delay
             for i, segment in enumerate(text_segments):

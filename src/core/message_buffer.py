@@ -150,9 +150,16 @@ class MessageBufferManager:
             if user_buffer.timer:
                 user_buffer.timer.cancel()
             
-            # Check if buffer is full
-            if len(user_buffer.messages) >= self.config.max_size:
-                logger.info(f"Buffer full for user {user_id}, processing immediately")
+            # Check if buffer is full by count or character limit
+            current_combined = self._get_current_buffer_text(user_buffer)
+            current_chinese_chars = self._count_chinese_characters(current_combined)
+            
+            if (len(user_buffer.messages) >= self.config.max_size or 
+                current_chinese_chars >= 1000):
+                if current_chinese_chars >= 1000:
+                    logger.info(f"Buffer reached 1000 Chinese character limit for user {user_id}, processing immediately")
+                else:
+                    logger.info(f"Buffer full for user {user_id}, processing immediately")
                 self._process_buffer(user_id)
             else:
                 # Set new timer
@@ -247,36 +254,94 @@ class MessageBufferManager:
             finally:
                 user_buffer.is_processing = False
     
-    def _combine_messages(self, messages: List[BufferedMessage]) -> str:
+    def _count_chinese_characters(self, text: str) -> int:
         """
-        Combine multiple messages into a single string.
+        Count Chinese characters in text.
         
         Args:
-            messages: List of buffered messages
+            text: Text to count characters
             
         Returns:
-            Combined message content as a single string
+            Number of Chinese characters
         """
-        if not messages:
+        import re
+        # Count Chinese characters (CJK Unified Ideographs and Extensions)
+        chinese_chars = re.findall(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]', text)
+        return len(chinese_chars)
+    
+    def _get_current_buffer_text(self, user_buffer: UserBuffer) -> str:
+        """
+        Get current buffer content as combined text for character counting.
+        
+        Args:
+            user_buffer: User buffer to get text from
+            
+        Returns:
+            Combined text of current buffer messages
+        """
+        if not user_buffer.messages:
             return ""
         
-        if len(messages) == 1:
-            return messages[0].message.content
+        # Create BufferedMessage list from current buffer
+        messages = list(user_buffer.messages)
         
         # Sort by sequence to maintain order
         sorted_messages = sorted(messages, key=lambda x: x.sequence)
         
-        # Simply join all messages with spaces
+        # Simply join all messages with spaces (no character limit check here)
         combined_parts = []
         for buffered_msg in sorted_messages:
             content = buffered_msg.message.content.strip()
             if content:
                 combined_parts.append(content)
         
+        return " ".join(combined_parts)
+    
+    def _combine_messages(self, messages: List[BufferedMessage]) -> str:
+        """
+        Combine multiple messages into a single string, respecting 1000 Chinese character limit.
+        
+        Args:
+            messages: List of buffered messages
+            
+        Returns:
+            Combined message content as a single string (max 1000 Chinese characters)
+        """
+        if not messages:
+            return ""
+        
+        if len(messages) == 1:
+            content = messages[0].message.content
+            # Check if single message exceeds limit
+            if self._count_chinese_characters(content) > 1000:
+                logger.warning(f"Single message exceeds 1000 Chinese character limit")
+            return content
+        
+        # Sort by sequence to maintain order
+        sorted_messages = sorted(messages, key=lambda x: x.sequence)
+        
+        # Combine messages while respecting character limit
+        combined_parts = []
+        total_chinese_chars = 0
+        
+        for buffered_msg in sorted_messages:
+            content = buffered_msg.message.content.strip()
+            if content:
+                content_chinese_chars = self._count_chinese_characters(content)
+                
+                # Check if adding this message would exceed limit
+                if total_chinese_chars + content_chinese_chars <= 1000:
+                    combined_parts.append(content)
+                    total_chinese_chars += content_chinese_chars
+                else:
+                    # Stop adding messages if limit would be exceeded
+                    logger.info(f"Stopped combining messages at {total_chinese_chars} Chinese characters to respect 1000 limit")
+                    break
+        
         # Join with spaces to create one natural sentence
         result = " ".join(combined_parts)
         
-        logger.debug(f"Combined {len(messages)} messages into: {result[:100]}...")
+        logger.debug(f"Combined {len(combined_parts)} messages into: {result[:100]}... ({total_chinese_chars} Chinese chars)")
         
         return result
     

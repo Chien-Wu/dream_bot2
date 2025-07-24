@@ -42,6 +42,7 @@ def mock_openai_service():
     mock_ai.get_response.return_value = AIResponse(
         text="Test AI response",
         confidence=0.95,
+        explanation=None,
         user_id="test_user"
     )
     return mock_ai
@@ -92,6 +93,7 @@ def sample_ai_response():
     return AIResponse(
         text="This is a test AI response",
         confidence=0.95,
+        explanation=None,
         user_id="test_user_123"
     )
 
@@ -102,6 +104,7 @@ def low_confidence_ai_response():
     return AIResponse(
         text="This is a low confidence response",
         confidence=0.50,
+        explanation=None,
         user_id="test_user_123"
     )
 

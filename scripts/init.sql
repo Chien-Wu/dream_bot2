@@ -24,8 +24,12 @@ CREATE TABLE IF NOT EXISTS message_history (
     content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
     message_type VARCHAR(20) DEFAULT 'text',
     ai_response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    ai_explanation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     confidence DECIMAL(3,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_user_id (user_id),
     INDEX idx_created_at (created_at)
 );
+
+-- Note: ai_explanation column is already included in the CREATE TABLE statement above
+-- For existing installations, the column addition is handled programmatically in the DatabaseService

@@ -299,12 +299,19 @@ class MessageProcessor:
             
             return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
         
+        # Build response including explanation if available
+        response_parts = [ai_response.text]
+        
+        # Add explanation if provided
+        if ai_response.explanation:
+            response_parts.append(f"\n\n📋 詳細說明：\n{ai_response.explanation}")
+        
         # Add confidence indicator in development mode
         from config import config
         if config.environment == 'development':
-            return f"{ai_response.text} (confidence: {ai_response.confidence:.2f})"
+            response_parts.append(f"\n(confidence: {ai_response.confidence:.2f})")
         
-        return ai_response.text
+        return "".join(response_parts)
     
     def _handle_processing_error(self, message: Message, error: Exception) -> None:
         """Handle errors during message processing."""

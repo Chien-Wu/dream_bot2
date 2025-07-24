@@ -219,6 +219,7 @@ class OpenAIService:
                 return AIResponse(
                     text="抱歉，AI 回應逾時，請稍後再試。",
                     confidence=0.0,
+                    explanation=None,
                     user_id=user_id
                 )
             
@@ -229,6 +230,7 @@ class OpenAIService:
                 return AIResponse(
                     text="抱歉，AI 無法取得回應內容，請稍後再試。",
                     confidence=0.0,
+                    explanation=None,
                     user_id=user_id
                 )
             
@@ -240,6 +242,7 @@ class OpenAIService:
                 user_id=user_id,
                 content=user_input,
                 ai_response=parsed_response.text,
+                ai_explanation=parsed_response.explanation,
                 confidence=parsed_response.confidence
             )
             
@@ -252,15 +255,15 @@ class OpenAIService:
             raise OpenAIError(f"Unexpected error: {e}")
     
     def _parse_response(self, response_text: str) -> AIResponse:
-        """Parse AI response and extract confidence score."""
-        # This is a simplified version - implement actual parsing logic
-        # based on your assistant's response format
+        """Parse AI response and extract confidence score and explanation."""
+        # Parse JSON response format: {"text": "...", "explanation": "...", "confidence": 0.00}
         try:
             import json
             parsed = json.loads(response_text)
             return AIResponse(
                 text=parsed.get("text", response_text),
                 confidence=parsed.get("confidence", 1.0),
+                explanation=parsed.get("explanation"),
                 user_id=""  # Will be set by caller
             )
         except (json.JSONDecodeError, KeyError):
@@ -268,6 +271,7 @@ class OpenAIService:
             return AIResponse(
                 text=response_text,
                 confidence=1.0,
+                explanation=None,
                 user_id=""
             )
     

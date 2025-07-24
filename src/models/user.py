@@ -42,6 +42,7 @@ class AIResponse:
     text: str
     confidence: float
     user_id: str
+    explanation: Optional[str] = None
     timestamp: Optional[datetime] = None
     metadata: Optional[dict] = None
     

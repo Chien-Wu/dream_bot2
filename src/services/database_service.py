@@ -71,6 +71,7 @@ class DatabaseService:
                     content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
                     message_type VARCHAR(20) DEFAULT 'text',
                     ai_response TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                    ai_explanation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     confidence DECIMAL(3,2),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_user_id (user_id),
@@ -98,6 +99,19 @@ class DatabaseService:
                 cursor.execute(create_user_threads_sql)
                 cursor.execute(create_messages_sql)
                 cursor.execute(create_organization_sql)
+                
+                # Add explanation column if it doesn't exist (for existing installations)
+                # Use a safer approach that works across MySQL versions
+                try:
+                    cursor.execute("ALTER TABLE message_history ADD COLUMN ai_explanation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+                except pymysql.Error as e:
+                    # Column already exists or other error - check if it's a duplicate column error
+                    if e.args[0] == 1060:  # Duplicate column name error
+                        logger.info("Column ai_explanation already exists, skipping addition")
+                    else:
+                        # Re-raise if it's a different error
+                        raise
+                
                 conn.commit()
                 
                 logger.info("Database tables initialized successfully")
@@ -156,16 +170,16 @@ class DatabaseService:
             raise DatabaseError(f"Failed to reset thread: {e}")
     
     def log_message(self, user_id: str, content: str, message_type: str = "text", 
-                   ai_response: str = None, confidence: float = None) -> None:
+                   ai_response: str = None, ai_explanation: str = None, confidence: float = None) -> None:
         """Log message interaction to database."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO message_history 
-                    (user_id, content, message_type, ai_response, confidence) 
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (user_id, content, message_type, ai_response, confidence))
+                    (user_id, content, message_type, ai_response, ai_explanation, confidence) 
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (user_id, content, message_type, ai_response, ai_explanation, confidence))
                 conn.commit()
                 
         except Exception as e:
