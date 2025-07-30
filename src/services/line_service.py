@@ -273,6 +273,7 @@ class LineService:
     
     def notify_admin(self, user_id: str, user_msg: str, 
                     ai_reply: str = None, confidence: float = None,
+                    ai_explanation: str = None,
                     notification_type: str = "handover") -> None:
         """
         Notify admin about user interaction requiring attention.
@@ -282,6 +283,7 @@ class LineService:
             user_msg: User's original message
             ai_reply: AI's response (if any)
             confidence: AI confidence score (if any)
+            ai_explanation: AI's explanation (if any)
             notification_type: Type of notification (handover, new_user, org_complete, image)
         """
         if not self.config.admin_user_id:
@@ -309,6 +311,8 @@ class LineService:
             
             if ai_reply:
                 notification_text += f"AI回覆: {ai_reply}\n"
+            if ai_explanation:
+                notification_text += f"AI說明: {ai_explanation}\n"
             if confidence is not None:
                 notification_text += f"信心度: {confidence:.2f}\n"
             

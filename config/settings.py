@@ -75,6 +75,9 @@ class AppConfig:
     host: str = os.getenv('HOST', '0.0.0.0')
     port: int = int(os.getenv('PORT', '5000'))
     
+    # AI Debug Information Switch
+    show_ai_debug_info: bool = os.getenv('SHOW_AI_DEBUG_INFO', 'False').lower() == 'true'
+    
     # Sub-configurations
     database: DatabaseConfig = None
     line: LineConfig = None

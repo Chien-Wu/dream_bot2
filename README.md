@@ -124,6 +124,9 @@ dream_line_bot_v2/
    MESSAGE_BUFFER_TIMEOUT=10.0
    MESSAGE_BUFFER_MAX_SIZE=10
    MESSAGE_BUFFER_MIN_LENGTH=50
+   
+   # Optional: AI Debug Information Switch
+   SHOW_AI_DEBUG_INFO=false
    ```
 
 5. **Database setup**
@@ -175,6 +178,24 @@ All configuration is managed through environment variables.
 | `MESSAGE_BUFFER_TIMEOUT`     | Message buffer timeout (seconds)        | `10.0`        |
 | `MESSAGE_BUFFER_MAX_SIZE`    | Max messages in buffer                  | `10`          |
 | `MESSAGE_BUFFER_MIN_LENGTH`  | Min length for immediate processing     | `50`          |
+| `SHOW_AI_DEBUG_INFO`         | Show AI explanation & confidence to users | `false`      |
+
+### AI Debug Information Switch
+
+The `SHOW_AI_DEBUG_INFO` environment variable controls what information users see based on AI confidence levels:
+
+**When `SHOW_AI_DEBUG_INFO=false` (Default):**
+- **High Confidence**: User receives only AI response
+- **Low Confidence**: User receives handover message ("此問題需要由專人處理...")
+
+**When `SHOW_AI_DEBUG_INFO=true`:**
+- **High Confidence**: User receives AI response + explanation + confidence score
+- **Low Confidence**: User receives handover message + AI response + explanation + confidence score
+
+This switch is useful for:
+- **Testing/Development**: See full AI reasoning and confidence levels
+- **Debugging**: Understand why AI confidence is low
+- **Quality Assurance**: Monitor AI performance in real-time
 
 ## 🧪 Testing
 

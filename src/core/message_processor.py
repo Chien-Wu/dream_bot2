@@ -292,24 +292,34 @@ class MessageProcessor:
                     user_msg=message.content,
                     ai_reply=ai_response.text,
                     confidence=ai_response.confidence,
+                    ai_explanation=ai_response.explanation,
                     notification_type="low_confidence"
                 )
             except Exception as e:
                 logger.error(f"Failed to notify admin: {e}")
             
-            return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
+            # For low confidence: show debug info if switch is on
+            from config import config
+            if config.show_ai_debug_info:
+                debug_response = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！\n\n"
+                debug_response += "🔧 AI詳細資訊：\n"
+                debug_response += f"AI回覆：{ai_response.text}\n"
+                if ai_response.explanation:
+                    debug_response += f"AI說明：{ai_response.explanation}\n"
+                debug_response += f"信心度：{ai_response.confidence:.2f}"
+                return debug_response
+            else:
+                return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
         
-        # Build response including explanation if available
+        # For high confidence: build response based on debug switch
+        from config import config
         response_parts = [ai_response.text]
         
-        # Add explanation if provided
-        if ai_response.explanation:
-            response_parts.append(f"\n\n📋 詳細說明：\n{ai_response.explanation}")
-        
-        # Add confidence indicator in development mode
-        from config import config
-        if config.environment == 'development':
-            response_parts.append(f"\n(confidence: {ai_response.confidence:.2f})")
+        if config.show_ai_debug_info:
+            # Show explanation and confidence when debug switch is on
+            if ai_response.explanation:
+                response_parts.append(f"\n\n📋 詳細說明：\n{ai_response.explanation}")
+            response_parts.append(f"\n\n🔧 信心度：{ai_response.confidence:.2f}")
         
         return "".join(response_parts)
     
