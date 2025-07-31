@@ -360,11 +360,10 @@ class MessageProcessor:
             command, args = self.admin_commands.parse_command(message.content)
             result = self.admin_commands.execute_command(command, args)
             
-            # Send response
+            # Send response using raw reply (no text processing for admin commands)
             if message.reply_token:
-                self.line.reply_message_to_user(
+                self.line.reply_message_raw(
                     message.reply_token,
-                    message.user_id,
                     result.message
                 )
                 
@@ -379,13 +378,12 @@ class MessageProcessor:
         except Exception as e:
             logger.error(f"Failed to handle admin command from {message.user_id}: {e}")
             
-            # Send error response
+            # Send error response using raw reply (no processing for admin commands)
             try:
                 error_message = "❌ 執行管理指令時發生錯誤，請稍後再試。"
                 if message.reply_token:
-                    self.line.reply_message_to_user(
+                    self.line.reply_message_raw(
                         message.reply_token,
-                        message.user_id,
                         error_message
                     )
             except Exception as error_send_error:

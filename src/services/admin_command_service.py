@@ -72,6 +72,14 @@ class AdminCommandService:
             handler=self._handle_help_command,
             aliases=["h", "?", "幫助"]
         )
+        
+        self.register_command(
+            name="lowconf",
+            description="查看低信心度問題",
+            usage="/lowconf [數量] [天數]",
+            handler=self._handle_low_confidence_command,
+            aliases=["low", "lc", "低信心"]
+        )
     
     def register_command(self, name: str, description: str, usage: str, 
                         handler: Callable, aliases: List[str] = None) -> None:
@@ -498,3 +506,129 @@ class AdminCommandService:
             message += "尚未建立組織資料\n"
         
         return message
+    
+    def _handle_low_confidence_command(self, args: List[str]) -> CommandResult:
+        """Handle low confidence questions lookup command."""
+        try:
+            # Parse arguments
+            limit = 10  # Default limit
+            days = 7    # Default days
+            
+            if args:
+                try:
+                    limit = int(args[0])
+                    if limit > 50:  # Safety limit
+                        limit = 50
+                except (ValueError, IndexError):
+                    return CommandResult(
+                        success=False,
+                        message="❌ 請提供有效的數量 (1-50)\n用法：/lowconf [數量] [天數]"
+                    )
+            
+            if len(args) > 1:
+                try:
+                    days = int(args[1])
+                    if days > 30:  # Safety limit
+                        days = 30
+                except ValueError:
+                    return CommandResult(
+                        success=False,
+                        message="❌ 請提供有效的天數 (1-30)\n用法：/lowconf [數量] [天數]"
+                    )
+            
+            # Get confidence threshold from config
+            from config import config
+            threshold = config.openai.confidence_threshold
+            
+            # Query low confidence messages
+            low_conf_messages = self._get_low_confidence_messages(threshold, limit, days)
+            
+            if not low_conf_messages:
+                return CommandResult(
+                    success=True,
+                    message=f"✅ 太好了！在過去 {days} 天內沒有找到信心度低於 {threshold:.2f} 的問題"
+                )
+            
+            # Format response
+            message = f"📊 低信心度問題報告\n\n"
+            message += f"**篩選條件：**\n"
+            message += f"• 信心度 < {threshold:.2f}\n"
+            message += f"• 時間範圍：過去 {days} 天\n"
+            message += f"• 顯示數量：{len(low_conf_messages)} 筆\n\n"
+            
+            for i, msg in enumerate(low_conf_messages, 1):
+                user_id = msg.get('user_id', '')
+                nickname = self.line.get_user_nickname(user_id)
+                confidence = msg.get('confidence', 0)
+                question = msg.get('content', '')[:100]  # Truncate long questions
+                ai_response = msg.get('ai_response', '')[:80] if msg.get('ai_response') else '無回應'
+                created_at = msg.get('created_at')
+                
+                # Format timestamp
+                if created_at:
+                    time_str = created_at.strftime('%m-%d %H:%M') if hasattr(created_at, 'strftime') else str(created_at)[:16]
+                else:
+                    time_str = '未知'
+                
+                confidence_emoji = "🔴" if confidence < 0.6 else "🟡"
+                
+                message += f"{i}. {confidence_emoji} **{nickname}** ({confidence:.2f})\n"
+                message += f"   ⏰ {time_str}\n"
+                message += f"   ❓ {question}{'...' if len(msg.get('content', '')) > 100 else ''}\n"
+                message += f"   🤖 {ai_response}{'...' if len(msg.get('ai_response', '')) > 80 else ''}\n\n"
+            
+            if len(low_conf_messages) == limit:
+                message += f"💡 提示：還可能有更多結果，使用 /lowconf {limit + 10} {days} 查看更多"
+            
+            return CommandResult(success=True, message=message, data={"messages": low_conf_messages})
+            
+        except Exception as e:
+            logger.error(f"Error in low confidence command: {e}")
+            return CommandResult(
+                success=False,
+                message=f"❌ 查詢低信心度問題時發生錯誤：{str(e)}",
+                error=str(e)
+            )
+    
+    def _get_low_confidence_messages(self, threshold: float, limit: int, days: int) -> List[Dict[str, Any]]:
+        """
+        Get messages with confidence scores below threshold.
+        
+        Args:
+            threshold: Confidence threshold
+            limit: Maximum number of results
+            days: Number of days to look back
+            
+        Returns:
+            List of low confidence message records
+        """
+        try:
+            query = """
+                SELECT 
+                    mh.user_id,
+                    mh.content,
+                    mh.ai_response,
+                    mh.ai_explanation,
+                    mh.confidence,
+                    mh.created_at
+                FROM message_history mh
+                WHERE 
+                    mh.confidence < %s 
+                    AND mh.confidence > 0  
+                    AND mh.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    AND mh.message_type = 'text'
+                ORDER BY mh.confidence ASC, mh.created_at DESC
+                LIMIT %s
+            """
+            
+            results = self.db.execute_query(
+                query, 
+                (threshold, days, limit),
+                fetch_all=True
+            )
+            
+            return [dict(row) for row in results] if results else []
+            
+        except Exception as e:
+            logger.error(f"Error getting low confidence messages: {e}")
+            return []

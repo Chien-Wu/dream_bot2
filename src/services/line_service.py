@@ -227,6 +227,27 @@ class LineService:
                 logger.error(f"Failed to reply message to user: {e}")
                 raise LineAPIError(f"Reply failed: {e}")
     
+    def reply_message_raw(self, reply_token: str, text: str) -> None:
+        """
+        Reply to a message with raw text - no processing, splitting, or cleaning.
+        Used for admin commands that need exact formatting.
+        
+        Args:
+            reply_token: LINE reply token
+            text: Raw message text to send (unprocessed)
+        """
+        try:
+            self.messaging_api.reply_message(
+                ReplyMessageRequest(
+                    reply_token=reply_token,
+                    messages=[LineTextMessage(text=text)]
+                )
+            )
+            logger.info(f"Raw reply sent successfully")
+        except Exception as e:
+            logger.error(f"Failed to send raw reply: {e}")
+            raise LineAPIError(f"Raw reply failed: {e}")
+    
     def push_message(self, user_id: str, text: str) -> None:
         """
         Push a message to a user.
