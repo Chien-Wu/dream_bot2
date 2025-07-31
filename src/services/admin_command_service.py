@@ -80,6 +80,14 @@ class AdminCommandService:
             handler=self._handle_low_confidence_command,
             aliases=["low", "lc", "低信心"]
         )
+        
+        self.register_command(
+            name="analyze",
+            description="AI分析失敗問題並提取重點",
+            usage="/analyze [天數] [最大問題數]",
+            handler=self._handle_analyze_failed_questions_command,
+            aliases=["analysis", "分析", "問題分析"]
+        )
     
     def register_command(self, name: str, description: str, usage: str, 
                         handler: Callable, aliases: List[str] = None) -> None:
@@ -632,3 +640,178 @@ class AdminCommandService:
         except Exception as e:
             logger.error(f"Error getting low confidence messages: {e}")
             return []
+    
+    def _handle_analyze_failed_questions_command(self, args: List[str]) -> CommandResult:
+        """Handle AI analysis of failed questions command."""
+        try:
+            # Parse arguments
+            days = 7     # Default days
+            max_questions = 50  # Default max questions
+            
+            if args:
+                try:
+                    days = int(args[0])
+                    if days > 30:  # Safety limit
+                        days = 30
+                except (ValueError, IndexError):
+                    return CommandResult(
+                        success=False,
+                        message="❌ 請提供有效的天數 (1-30)\n用法：/analyze [天數] [最大問題數]"
+                    )
+            
+            if len(args) > 1:
+                try:
+                    max_questions = int(args[1])
+                    if max_questions > 100:  # Safety limit
+                        max_questions = 100
+                except ValueError:
+                    return CommandResult(
+                        success=False,
+                        message="❌ 請提供有效的問題數量 (1-100)\n用法：/analyze [天數] [最大問題數]"
+                    )
+            
+            # Get confidence threshold from config
+            from config import config
+            threshold = config.openai.confidence_threshold
+            
+            # Get failed questions
+            failed_questions = self._get_failed_questions_for_analysis(threshold, max_questions, days)
+            
+            if not failed_questions:
+                return CommandResult(
+                    success=True,
+                    message=f"✅ 太好了！在過去 {days} 天內沒有找到需要分析的失敗問題"
+                )
+            
+            # Analyze questions using AI
+            logger.info(f"Starting AI analysis of {len(failed_questions)} failed questions")
+            analysis_result = self._analyze_questions_with_ai(failed_questions, days)
+            
+            if not analysis_result:
+                return CommandResult(
+                    success=False,
+                    message="❌ AI分析過程中發生錯誤，請稍後再試"
+                )
+            
+            # Format comprehensive response
+            message = f"🤖 AI問題分析報告\n\n"
+            message += f"**分析範圍：**\n"
+            message += f"• 時間範圍：過去 {days} 天\n"
+            message += f"• 分析問題數：{len(failed_questions)} 筆\n"
+            message += f"• 信心度閾值：< {threshold:.2f}\n\n"
+            message += f"**AI分析結果：**\n\n"
+            message += analysis_result
+            
+            return CommandResult(success=True, message=message, data={"questions": failed_questions, "analysis": analysis_result})
+            
+        except Exception as e:
+            logger.error(f"Error in analyze failed questions command: {e}")
+            return CommandResult(
+                success=False,
+                message=f"❌ 分析失敗問題時發生錯誤：{str(e)}",
+                error=str(e)
+            )
+    
+    def _get_failed_questions_for_analysis(self, threshold: float, max_questions: int, days: int) -> List[Dict[str, Any]]:
+        """
+        Get failed questions for AI analysis.
+        
+        Args:
+            threshold: Confidence threshold
+            max_questions: Maximum number of questions to analyze
+            days: Number of days to look back
+            
+        Returns:
+            List of failed question records
+        """
+        try:
+            query = """
+                SELECT 
+                    mh.content,
+                    MAX(mh.ai_response) as ai_response,
+                    MAX(mh.ai_explanation) as ai_explanation,
+                    MIN(mh.confidence) as confidence,
+                    MAX(mh.created_at) as created_at,
+                    COUNT(*) as frequency
+                FROM message_history mh
+                WHERE 
+                    mh.confidence < %s 
+                    AND mh.confidence > 0  
+                    AND mh.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    AND mh.message_type = 'text'
+                    AND LENGTH(mh.content) > 10  -- Filter out very short questions
+                GROUP BY mh.content
+                ORDER BY frequency DESC, confidence ASC, created_at DESC
+                LIMIT %s
+            """
+            
+            results = self.db.execute_query(
+                query, 
+                (threshold, days, max_questions),
+                fetch_all=True
+            )
+            
+            return [dict(row) for row in results] if results else []
+            
+        except Exception as e:
+            logger.error(f"Error getting failed questions for analysis: {e}")
+            return []
+    
+    def _analyze_questions_with_ai(self, questions: List[Dict[str, Any]], days: int) -> str:
+        """
+        Use AI to analyze failed questions and extract insights.
+        
+        Args:
+            questions: List of failed question records
+            days: Time period analyzed
+            
+        Returns:
+            AI analysis result as formatted string
+        """
+        try:
+            # Prepare questions for AI analysis
+            questions_text = ""
+            for i, q in enumerate(questions, 1):
+                content = q.get('content', '')[:200]  # Limit length
+                confidence = q.get('confidence', 0)
+                frequency = q.get('frequency', 1)
+                questions_text += f"{i}. [{confidence:.2f}] [出現{frequency}次] {content}\n"
+            
+            # AI analysis prompt  
+            analysis_prompt = f"""分析以下 {len(questions)} 個低信心度問題（過去{days}天內），請提供簡潔分析：
+
+問題列表：
+{questions_text}
+
+請按以下格式回答：
+
+**主要問題類型：** [類型1]、[類型2]、[類型3]
+
+**最重要問題範例：**
+1. [最重要的問題1]
+2. [最重要的問題2] 
+3. [最重要的問題3]
+4. [最重要的問題4]
+5. [最重要的問題5]
+
+請用繁體中文，保持簡潔。"""
+
+            # Use OpenAI for analysis
+            from src.services.openai_service import OpenAIService
+            from src.core import container
+            
+            # Get OpenAI service from container
+            openai_service = container.resolve(OpenAIService)
+            
+            # Create a temporary user for analysis (admin analysis)
+            analysis_response = openai_service.get_response("admin_analysis_user", analysis_prompt)
+            
+            if analysis_response and hasattr(analysis_response, 'text'):
+                return analysis_response.text
+            else:
+                logger.error("No valid response from AI analysis")
+                return "AI分析未能產生有效結果"
+                
+        except Exception as e:
+            logger.error(f"Error in AI analysis: {e}")
+            return f"AI分析過程發生錯誤: {str(e)}"
