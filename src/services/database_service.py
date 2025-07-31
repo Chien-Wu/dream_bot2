@@ -43,6 +43,36 @@ class DatabaseService:
             if connection:
                 connection.close()
     
+    def execute_query(self, query: str, params: tuple = None, fetch_one: bool = False, fetch_all: bool = False):
+        """
+        Execute a SQL query with parameters.
+        
+        Args:
+            query: SQL query string
+            params: Query parameters tuple
+            fetch_one: Return single row
+            fetch_all: Return all rows
+            
+        Returns:
+            Query results or None
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(pymysql.cursors.DictCursor)
+                cursor.execute(query, params or ())
+                
+                if fetch_one:
+                    return cursor.fetchone()
+                elif fetch_all:
+                    return cursor.fetchall()
+                else:
+                    conn.commit()
+                    return cursor.rowcount
+                    
+        except pymysql.Error as e:
+            logger.error(f"Query execution error: {e}")
+            raise DatabaseError(f"Query failed: {e}")
+    
     def initialize_tables(self):
         """Initialize required database tables."""
         try:

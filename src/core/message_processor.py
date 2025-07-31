@@ -9,6 +9,7 @@ from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, OpenAIService, LineService
 from src.services.welcome_flow_manager import WelcomeFlowManager
+from src.services.admin_command_service import AdminCommandService
 from src.core.message_buffer import message_buffer
 
 
@@ -27,6 +28,9 @@ class MessageProcessor:
         self.ai = openai_service
         self.line = line_service
         self.welcome_flow = welcome_flow_manager
+        
+        # Initialize admin command service
+        self.admin_commands = AdminCommandService(database_service, line_service)
         
         # Set up message buffer callback
         message_buffer.set_process_callback(self._process_buffered_message)
@@ -77,7 +81,12 @@ class MessageProcessor:
                 logger.debug(f"Ignoring message type: {message.message_type}")
                 return
             
-            # Check welcome flow first (organization data collection)
+            # Check if this is an admin command
+            if self._is_admin_user(message.user_id) and self.admin_commands.is_admin_command(message.content):
+                self._handle_admin_command(message)
+                return
+            
+            # Check welcome flow (organization data collection)
             welcome_result = self.welcome_flow.process_message(message.user_id, message.content)
             
             if welcome_result.should_block:
@@ -322,6 +331,56 @@ class MessageProcessor:
             response_parts.append(f"\n\n🔧 信心度：{ai_response.confidence:.2f}")
         
         return "".join(response_parts)
+    
+    def _is_admin_user(self, user_id: str) -> bool:
+        """Check if user is an admin."""
+        from config import config
+        return user_id == config.line.admin_user_id
+    
+    def _handle_admin_command(self, message: Message) -> None:
+        """Handle admin command execution."""
+        try:
+            log_user_action(
+                logger,
+                message.user_id,
+                "admin_command_received",
+                command=message.content
+            )
+            
+            # Parse and execute command
+            command, args = self.admin_commands.parse_command(message.content)
+            result = self.admin_commands.execute_command(command, args)
+            
+            # Send response
+            if message.reply_token:
+                self.line.reply_message_to_user(
+                    message.reply_token,
+                    message.user_id,
+                    result.message
+                )
+                
+            log_user_action(
+                logger,
+                message.user_id,
+                "admin_command_executed",
+                command=command,
+                success=result.success
+            )
+            
+        except Exception as e:
+            logger.error(f"Failed to handle admin command from {message.user_id}: {e}")
+            
+            # Send error response
+            try:
+                error_message = "❌ 執行管理指令時發生錯誤，請稍後再試。"
+                if message.reply_token:
+                    self.line.reply_message_to_user(
+                        message.reply_token,
+                        message.user_id,
+                        error_message
+                    )
+            except Exception as error_send_error:
+                logger.error(f"Failed to send admin command error response: {error_send_error}")
     
     def _handle_processing_error(self, message: Message, error: Exception) -> None:
         """Handle errors during message processing."""
