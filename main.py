@@ -11,6 +11,7 @@ from src.services import DatabaseService, OpenAIService, LineService
 from src.services.organization_analyzer import OrganizationDataAnalyzer
 from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.services.function_handler import FunctionHandler
+from src.services.admin_command_service import AdminCommandService
 from src.controllers import WebhookController
 
 
@@ -34,13 +35,19 @@ def create_app() -> Flask:
     db_service = container.resolve(DatabaseService)
     db_service.initialize_tables()
     
-    # Setup webhook controller
+    # Eager initialization of critical services to ensure they're ready immediately
+    # Initialize in dependency order to ensure proper singleton sharing
+    admin_command_service = container.resolve(AdminCommandService)
+    logger.info("Admin command service initialized and ready")
+    
+    # Pre-resolve MessageProcessor to ensure it uses the same AdminCommandService instance
     message_processor = container.resolve(MessageProcessor)
+    logger.info("Message processor initialized with admin command service")
     line_service = container.resolve(LineService)
     welcome_flow_manager = container.resolve(WelcomeFlowManager)
     webhook_controller = WebhookController(app, message_processor, line_service, welcome_flow_manager)
     
-    logger.info("Dream Line Bot initialization completed")
+    logger.info("Dream Line Bot initialization completed with all services ready")
     return app
 
 
@@ -54,6 +61,7 @@ def setup_dependencies():
     container.register_singleton(OpenAIService)
     container.register_singleton(OrganizationDataAnalyzer)
     container.register_singleton(WelcomeFlowManager)
+    container.register_singleton(AdminCommandService)
     container.register_singleton(MessageProcessor)
 
 
@@ -62,5 +70,6 @@ if __name__ == "__main__":
     app.run(
         host=config.host,
         port=config.port,
-        debug=config.debug
+        debug=config.debug,
+        use_reloader=False  # Disable auto-reload to prevent double initialization
     )

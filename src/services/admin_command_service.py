@@ -50,7 +50,10 @@ class AdminCommandService:
         self.db = database_service
         self.line = line_service
         self.commands: Dict[str, CommandInfo] = {}
+        
+        logger.info(f"AdminCommandService initializing with ID: {id(self)}")
         self._register_default_commands()
+        logger.info(f"AdminCommandService initialized with {len(self.commands)} commands: {list(self.commands.keys())}")
     
     def _register_default_commands(self) -> None:
         """Register default admin commands."""

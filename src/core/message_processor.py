@@ -5,6 +5,7 @@ import time
 import threading
 from typing import Optional
 
+from config import config
 from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, OpenAIService, LineService
@@ -23,14 +24,17 @@ class MessageProcessor:
                  database_service: DatabaseService,
                  openai_service: OpenAIService, 
                  line_service: LineService,
-                 welcome_flow_manager: WelcomeFlowManager):
+                 welcome_flow_manager: WelcomeFlowManager,
+                 admin_command_service: AdminCommandService):
         self.db = database_service
         self.ai = openai_service
         self.line = line_service
         self.welcome_flow = welcome_flow_manager
+        self.admin_commands = admin_command_service
         
-        # Initialize admin command service
-        self.admin_commands = AdminCommandService(database_service, line_service)
+        # Debug: Verify admin command service is properly initialized
+        logger.info(f"MessageProcessor initialized with AdminCommandService: {id(self.admin_commands)}")
+        logger.info(f"AdminCommandService has {len(self.admin_commands.commands)} registered commands")
         
         # Set up message buffer callback
         message_buffer.set_process_callback(self._process_buffered_message)
@@ -82,7 +86,13 @@ class MessageProcessor:
                 return
             
             # Check if this is an admin command
-            if self._is_admin_user(message.user_id) and self.admin_commands.is_admin_command(message.content):
+            is_admin = self._is_admin_user(message.user_id)
+            is_command = self.admin_commands.is_admin_command(message.content)
+            
+            logger.debug(f"Admin check - user_id: {message.user_id}, is_admin: {is_admin}, is_command: {is_command}, content: {message.content[:50]}")
+            
+            if is_admin and is_command:
+                logger.info(f"Processing admin command from {message.user_id}: {message.content}")
                 self._handle_admin_command(message)
                 return
             
@@ -308,7 +318,6 @@ class MessageProcessor:
                 logger.error(f"Failed to notify admin: {e}")
             
             # For low confidence: show debug info if switch is on
-            from config import config
             if config.show_ai_debug_info:
                 debug_response = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！\n\n"
                 debug_response += "🔧 AI詳細資訊：\n"
@@ -321,7 +330,6 @@ class MessageProcessor:
                 return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
         
         # For high confidence: build response based on debug switch
-        from config import config
         response_parts = [ai_response.text]
         
         if config.show_ai_debug_info:
@@ -334,8 +342,9 @@ class MessageProcessor:
     
     def _is_admin_user(self, user_id: str) -> bool:
         """Check if user is an admin."""
-        from config import config
-        return user_id == config.line.admin_user_id
+        is_admin = user_id == config.line.admin_user_id
+        logger.debug(f"Admin check: user_id={user_id}, admin_user_id={config.line.admin_user_id}, is_admin={is_admin}")
+        return is_admin
     
     def _handle_admin_command(self, message: Message) -> None:
         """Handle admin command execution."""
