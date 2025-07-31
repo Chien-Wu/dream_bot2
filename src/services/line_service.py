@@ -72,8 +72,11 @@ class LineService:
         # Remove brackets with pattern 【...†...】
         cleaned_text = re.sub(r'【[^】]*†[^】]*】', '', text)
         
-        # Clean up any double spaces left behind and trim
-        cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
+        # Replace Chinese semicolons with newlines
+        cleaned_text = cleaned_text.replace('；', '\n')
+        
+        # Clean up any double spaces left behind and trim, but preserve newlines
+        cleaned_text = re.sub(r'[ \t]+', ' ', cleaned_text).strip()
         
         return cleaned_text
     

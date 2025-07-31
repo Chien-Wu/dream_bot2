@@ -100,11 +100,22 @@ class WelcomeFlowManager:
             
             # Check if completed
             if analysis_result['completion_status'] == 'complete':
+                # Get the updated organization data for admin notification
+                updated_record = self.db.get_organization_record(user_id)
+                org_data = self._record_to_data(updated_record)
+                
+                # Format organization data for admin message
+                admin_message = "已完成組織資料填寫\n\n"
+                admin_message += f"組織名稱: {org_data.organization_name or '未提供'}\n"
+                admin_message += f"服務城市: {org_data.service_city or '未提供'}\n"
+                admin_message += f"聯絡資訊: {org_data.contact_info or '未提供'}\n"
+                admin_message += f"服務對象: {org_data.service_target or '未提供'}"
+                
                 return WelcomeFlowResult(
                     should_block=True,
                     response_message=analysis_result['hint_message'],
                     notify_admin=True,
-                    admin_message="已完成組織資料填寫",
+                    admin_message=admin_message,
                     context_updated=True
                 )
             else:
