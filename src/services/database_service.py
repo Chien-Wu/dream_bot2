@@ -131,16 +131,16 @@ class DatabaseService:
                 cursor.execute(create_organization_sql)
                 
                 # Add explanation column if it doesn't exist (for existing installations)
-                # Use a safer approach that works across MySQL versions
-                try:
+                # Check if column exists first, then add if missing
+                cursor.execute("SHOW COLUMNS FROM message_history LIKE 'ai_explanation'")
+                column_exists = cursor.fetchone()
+                
+                if not column_exists:
+                    logger.info("Adding ai_explanation column to message_history table...")
                     cursor.execute("ALTER TABLE message_history ADD COLUMN ai_explanation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-                except pymysql.Error as e:
-                    # Column already exists or other error - check if it's a duplicate column error
-                    if e.args[0] == 1060:  # Duplicate column name error
-                        logger.info("Column ai_explanation already exists, skipping addition")
-                    else:
-                        # Re-raise if it's a different error
-                        raise
+                    logger.info("ai_explanation column added successfully")
+                else:
+                    logger.info("ai_explanation column already exists")
                 
                 conn.commit()
                 

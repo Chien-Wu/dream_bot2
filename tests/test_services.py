@@ -13,8 +13,8 @@ class TestLineService:
     
     @patch('src.services.line_service.MessagingApi')
     @patch('src.services.line_service.Configuration')
-    def test_reply_message(self, mock_config, mock_messaging_api):
-        """Test replying to a message."""
+    def test_send_message(self, mock_config, mock_messaging_api):
+        """Test sending a message."""
         # Setup
         mock_api_instance = Mock()
         mock_messaging_api.return_value = mock_api_instance
@@ -22,7 +22,7 @@ class TestLineService:
         line_service = LineService()
         
         # Execute
-        line_service.reply_message("test_token", "Test reply")
+        line_service.send_message("test_user_id", "Test message", "test_token")
         
         # Verify
         mock_api_instance.reply_message.assert_called_once()
@@ -43,8 +43,14 @@ class TestLineService:
         # Verify
         mock_api_instance.push_message.assert_called_once()
     
-    def test_is_handover_request(self):
+    @patch('src.services.line_service.MessagingApi')
+    @patch('src.services.line_service.Configuration')
+    def test_is_handover_request(self, mock_config, mock_messaging_api):
         """Test handover request detection."""
+        # Setup
+        mock_api_instance = Mock()
+        mock_messaging_api.return_value = mock_api_instance
+        
         line_service = LineService()
         
         # Test positive cases
@@ -56,9 +62,14 @@ class TestLineService:
         assert not line_service.is_handover_request("Hello")
         assert not line_service.is_handover_request("普通問題")
     
-    def test_extract_message_text(self):
+    @patch('src.services.line_service.MessagingApi')
+    @patch('src.services.line_service.Configuration')
+    def test_extract_message_text(self, mock_config, mock_messaging_api):
         """Test extracting text message from LINE event."""
         # Setup
+        mock_api_instance = Mock()
+        mock_messaging_api.return_value = mock_api_instance
+        
         mock_event = Mock()
         mock_event.source.user_id = "test_user"
         mock_event.reply_token = "test_token"
@@ -77,9 +88,14 @@ class TestLineService:
         assert message.message_type == "text"
         assert message.reply_token == "test_token"
     
-    def test_extract_message_image(self):
+    @patch('src.services.line_service.MessagingApi')
+    @patch('src.services.line_service.Configuration')
+    def test_extract_message_image(self, mock_config, mock_messaging_api):
         """Test extracting image message from LINE event."""
         # Setup
+        mock_api_instance = Mock()
+        mock_messaging_api.return_value = mock_api_instance
+        
         mock_event = Mock()
         mock_event.source.user_id = "test_user"
         mock_event.reply_token = "test_token"
@@ -95,9 +111,14 @@ class TestLineService:
         assert message.content == "[Image]"
         assert message.message_type == "image"
     
-    def test_extract_message_group_ignored(self):
+    @patch('src.services.line_service.MessagingApi')
+    @patch('src.services.line_service.Configuration')
+    def test_extract_message_group_ignored(self, mock_config, mock_messaging_api):
         """Test that group messages are ignored."""
         # Setup
+        mock_api_instance = Mock()
+        mock_messaging_api.return_value = mock_api_instance
+        
         mock_event = Mock()
         mock_event.source.group_id = "group123"
         

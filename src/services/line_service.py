@@ -117,140 +117,75 @@ class LineService:
         
         return segments
 
-    def reply_message(self, reply_token: str, text: str) -> None:
-        """
-        Reply to a message using reply token.
-        Splits long text by sentence endings and sends as separate messages.
-        
-        Args:
-            reply_token: LINE reply token
-            text: Message text to send
-        """
-        try:
-            # Clean reference brackets first
-            cleaned_text = self._clean_reference_brackets(text)
-            
-            # Split text by sentence endings
-            text_segments = self._split_text_by_sentence_endings(cleaned_text)
-            
-            if len(text_segments) == 1:
-                # Single message - use reply
-                self.messaging_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[LineTextMessage(text=text_segments[0])]
-                    )
-                )
-                logger.info(f"Replied to message with token: {reply_token[:10]}...")
-            else:
-                # Multiple segments - reply with first, then push the rest
-                # Reply with first segment
-                self.messaging_api.reply_message(
-                    ReplyMessageRequest(
-                        reply_token=reply_token,
-                        messages=[LineTextMessage(text=text_segments[0])]
-                    )
-                )
-                logger.info(f"Replied with first segment: {reply_token[:10]}...")
-                
-                # Note: We need user_id to push additional messages
-                # This will be handled in reply_message_to_user method
-                
-        except Exception as e:
-            logger.error(f"Failed to reply message: {e}")
-            raise LineAPIError(f"Reply failed: {e}")
 
-    def reply_message_to_user(self, reply_token: str, user_id: str, text: str) -> None:
+    def send_message(self, user_id: str, text: str, reply_token: str = None) -> None:
         """
-        Reply to a message and send additional segments as push messages.
-        Automatically falls back to push message if reply token is invalid.
+        Send message to user with automatic fallback from reply to push.
         
         Args:
-            reply_token: LINE reply token
-            user_id: LINE user ID for push messages
+            user_id: LINE user ID
             text: Message text to send
+            reply_token: Optional reply token (will fallback to push if invalid)
         """
         try:
-            # Clean reference brackets first
-            cleaned_text = self._clean_reference_brackets(text)
+            # Process text
+            processed_text = self._process_text(text)
+            text_segments = self._split_text_by_sentence_endings(processed_text)
             
-            # Split text by sentence endings
-            text_segments = self._split_text_by_sentence_endings(cleaned_text)
-            
-            try:
-                if len(text_segments) == 1:
-                    # Single message - use reply
-                    self.messaging_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=reply_token,
-                            messages=[LineTextMessage(text=text_segments[0])]
-                        )
-                    )
-                    logger.info(f"Replied to message with token: {reply_token[:10]}...")
-                else:
-                    # Multiple segments - reply with first, then push the rest
-                    # Reply with first segment
-                    self.messaging_api.reply_message(
-                        ReplyMessageRequest(
-                            reply_token=reply_token,
-                            messages=[LineTextMessage(text=text_segments[0])]
-                        )
-                    )
-                    logger.info(f"Replied with first segment: {reply_token[:10]}...")
-                    
-                    # Push remaining segments with small delay
-                    for i, segment in enumerate(text_segments[1:], 1):
-                        time.sleep(0.5)  # Small delay between messages
-                        self.push_message(user_id, segment)
-                        logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
-                        
-            except Exception as reply_error:
-                # Check if it's a reply token error
-                if "Invalid reply token" in str(reply_error) or "reply token" in str(reply_error).lower():
-                    logger.warning(f"Reply token expired/invalid, falling back to push message")
-                    # Fallback: send all segments as push messages
-                    self.push_message_with_split(user_id, text)
-                else:
-                    # Re-raise other types of errors
-                    raise reply_error
-                
-        except Exception as e:
-            # Final fallback check
-            if "Invalid reply token" in str(e) or "reply token" in str(e).lower():
-                logger.warning(f"Using push message fallback due to token issue")
+            # Try reply first if token available, otherwise use push
+            if reply_token:
                 try:
-                    self.push_message_with_split(user_id, text)
-                except Exception as push_error:
-                    logger.error(f"Push message fallback also failed: {push_error}")
-                    raise LineAPIError(f"Both reply and push failed: {e}")
-            else:
-                logger.error(f"Failed to reply message to user: {e}")
-                raise LineAPIError(f"Reply failed: {e}")
+                    self._send_with_reply(reply_token, text_segments, user_id)
+                    return
+                except Exception as e:
+                    if self._is_token_error(e):
+                        logger.warning("Reply token invalid, falling back to push")
+                    else:
+                        raise e
+            
+            # Fallback to push messages
+            self._send_with_push(user_id, text_segments)
+            
+        except Exception as e:
+            logger.error(f"Failed to send message to {user_id}: {e}")
+            raise LineAPIError(f"Message send failed: {e}")
     
-    def reply_message_raw(self, reply_token: str, text: str) -> None:
+    def send_raw_message(self, user_id: str, text: str, reply_token: str = None) -> None:
         """
-        Reply to a message with raw text - no processing, splitting, or cleaning.
-        Used for admin commands that need exact formatting.
+        Send raw message without processing - used for admin commands.
         
         Args:
-            reply_token: LINE reply token
+            user_id: LINE user ID
             text: Raw message text to send (unprocessed)
+            reply_token: Optional reply token (will fallback to push if invalid)
         """
         try:
-            self.messaging_api.reply_message(
-                ReplyMessageRequest(
-                    reply_token=reply_token,
-                    messages=[LineTextMessage(text=text)]
-                )
-            )
-            logger.info(f"Raw reply sent successfully")
+            if reply_token:
+                try:
+                    self.messaging_api.reply_message(
+                        ReplyMessageRequest(
+                            reply_token=reply_token,
+                            messages=[LineTextMessage(text=text)]
+                        )
+                    )
+                    logger.info("Raw reply sent successfully")
+                    return
+                except Exception as e:
+                    if self._is_token_error(e):
+                        logger.warning("Reply token invalid, falling back to push")
+                    else:
+                        raise e
+            
+            # Fallback to push
+            self.push_message(user_id, text)
+            
         except Exception as e:
-            logger.error(f"Failed to send raw reply: {e}")
-            raise LineAPIError(f"Raw reply failed: {e}")
+            logger.error(f"Failed to send raw message: {e}")
+            raise LineAPIError(f"Raw message send failed: {e}")
     
     def push_message(self, user_id: str, text: str) -> None:
         """
-        Push a message to a user.
+        Push a single message to a user.
         
         Args:
             user_id: LINE user ID
@@ -269,31 +204,68 @@ class LineService:
             logger.error(f"Failed to push message to {user_id}: {e}")
             raise LineAPIError(f"Push failed: {e}")
 
-    def push_message_with_split(self, user_id: str, text: str) -> None:
+    def _process_text(self, text: str) -> str:
         """
-        Push a message to a user, splitting by sentence endings if needed.
+        Process text by cleaning reference brackets and formatting.
+        
+        Args:
+            text: Raw text to process
+            
+        Returns:
+            Processed text
+        """
+        return self._clean_reference_brackets(text)
+    
+    def _send_with_reply(self, reply_token: str, text_segments: List[str], user_id: str) -> None:
+        """
+        Send message segments using reply token.
+        
+        Args:
+            reply_token: LINE reply token
+            text_segments: List of text segments to send
+            user_id: User ID for additional segments
+        """
+        # Send first segment as reply
+        self.messaging_api.reply_message(
+            ReplyMessageRequest(
+                reply_token=reply_token,
+                messages=[LineTextMessage(text=text_segments[0])]
+            )
+        )
+        logger.info(f"Replied with first segment")
+        
+        # Send remaining segments as push messages
+        for i, segment in enumerate(text_segments[1:], 1):
+            time.sleep(0.5)
+            self.push_message(user_id, segment)
+            logger.info(f"Pushed segment {i+1}/{len(text_segments)}")
+    
+    def _send_with_push(self, user_id: str, text_segments: List[str]) -> None:
+        """
+        Send message segments using push messages.
         
         Args:
             user_id: LINE user ID
-            text: Message text to send
+            text_segments: List of text segments to send
         """
-        try:
-            # Clean reference brackets first
-            cleaned_text = self._clean_reference_brackets(text)
+        for i, segment in enumerate(text_segments):
+            if i > 0:
+                time.sleep(0.5)
+            self.push_message(user_id, segment)
+            logger.info(f"Pushed segment {i+1}/{len(text_segments)}")
+    
+    def _is_token_error(self, error: Exception) -> bool:
+        """
+        Check if error is related to invalid reply token.
+        
+        Args:
+            error: Exception to check
             
-            # Split text by sentence endings
-            text_segments = self._split_text_by_sentence_endings(cleaned_text)
-            
-            # Send all segments as push messages with delay
-            for i, segment in enumerate(text_segments):
-                if i > 0:  # Add delay between messages
-                    time.sleep(0.5)
-                self.push_message(user_id, segment)
-                logger.info(f"Pushed segment {i+1}/{len(text_segments)} to user: {user_id}")
-                
-        except Exception as e:
-            logger.error(f"Failed to push split message to {user_id}: {e}")
-            raise LineAPIError(f"Push split failed: {e}")
+        Returns:
+            True if it's a token-related error
+        """
+        error_msg = str(error).lower()
+        return "invalid reply token" in error_msg or "reply token" in error_msg
     
     def notify_admin(self, user_id: str, user_msg: str, 
                     ai_reply: str = None, confidence: float = None,

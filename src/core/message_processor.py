@@ -34,7 +34,11 @@ class MessageProcessor:
         
         # Debug: Verify admin command service is properly initialized
         logger.info(f"MessageProcessor initialized with AdminCommandService: {id(self.admin_commands)}")
-        logger.info(f"AdminCommandService has {len(self.admin_commands.commands)} registered commands")
+        try:
+            logger.info(f"AdminCommandService has {len(self.admin_commands.commands)} registered commands")
+        except (TypeError, AttributeError):
+            # Handle mock objects in tests
+            logger.info("AdminCommandService initialized (mock or missing commands)")
         
         # Set up message buffer callback
         message_buffer.set_process_callback(self._process_buffered_message)
@@ -62,7 +66,7 @@ class MessageProcessor:
     
     def _handle_single_message(self, message: Message) -> None:
         """
-        Handle a single message (core processing logic).
+        Handle a single message using chain of responsibility pattern.
         
         Args:
             message: Message to process
@@ -71,88 +75,24 @@ class MessageProcessor:
             log_user_action(
                 logger, 
                 message.user_id, 
-                f"message_received",
+                "message_received",
                 message_type=message.message_type,
                 content_length=len(message.content)
             )
             
-            # Handle different message types
-            if message.message_type == "image":
-                self._handle_image_message(message)
-                return
+            # Chain of responsibility - each handler returns True if it handled the message
+            handlers = [
+                self._handle_non_text_messages,
+                self._handle_admin_commands,
+                self._handle_welcome_flow,
+                self._handle_handover_requests,
+                self._handle_ai_response
+            ]
             
-            if message.message_type != "text":
-                logger.debug(f"Ignoring message type: {message.message_type}")
-                return
-            
-            # Check if this is an admin command
-            is_admin = self._is_admin_user(message.user_id)
-            is_command = self.admin_commands.is_admin_command(message.content)
-            
-            logger.debug(f"Admin check - user_id: {message.user_id}, is_admin: {is_admin}, is_command: {is_command}, content: {message.content[:50]}")
-            
-            if is_admin and is_command:
-                logger.info(f"Processing admin command from {message.user_id}: {message.content}")
-                self._handle_admin_command(message)
-                return
-            
-            # Check welcome flow (organization data collection)
-            welcome_result = self.welcome_flow.process_message(message.user_id, message.content)
-            
-            if welcome_result.should_block:
-                # Send response message if provided
-                if welcome_result.response_message and message.reply_token:
-                    self.line.reply_message_to_user(
-                        message.reply_token, 
-                        message.user_id, 
-                        welcome_result.response_message
-                    )
-                
-                # Notify admin if needed
-                if welcome_result.notify_admin and welcome_result.admin_message:
-                    self.line.notify_admin(
-                        user_id=message.user_id,
-                        user_msg=welcome_result.admin_message,
-                        notification_type="org_complete"
-                    )
-                
-                # Update user context in ChatGPT if organization data is complete
-                if welcome_result.context_updated:
-                    try:
-                        # Get existing thread to update context
-                        thread_id = self.db.get_user_thread_id(message.user_id)
-                        if thread_id:
-                            self.ai._refresh_user_context(message.user_id, thread_id)
-                    except Exception as e:
-                        logger.error(f"Failed to update user context for {message.user_id}: {e}")
-                
-                # Block further processing
-                return
-            
-            # Check for handover request
-            if self.line.is_handover_request(message.content):
-                self._handle_handover_request(message)
-                return
-            
-            
-            # Get AI response
-            ai_response = self.ai.get_response(message.user_id, message.content)
-            
-            # Determine final response based on confidence
-            final_text = self._determine_final_response(message, ai_response)
-            
-            # Send reply (split by Chinese periods if needed)
-            if message.reply_token:
-                self.line.reply_message_to_user(message.reply_token, message.user_id, final_text)
-            
-            log_user_action(
-                logger,
-                message.user_id,
-                "message_processed",
-                confidence=ai_response.confidence,
-                needs_review=ai_response.needs_human_review
-            )
-            
+            for handler in handlers:
+                if handler(message):
+                    break
+                    
         except Exception as e:
             logger.error(f"Failed to process message from {message.user_id}: {e}")
             self._handle_processing_error(message, e)
@@ -182,99 +122,131 @@ class MessageProcessor:
                 reply_token=reply_token
             )
             
-            # Check welcome flow first (organization data collection)
-            welcome_result = self.welcome_flow.process_message(user_id, combined_content)
-            
-            if welcome_result.should_block:
-                # Send response message if provided
-                if welcome_result.response_message:
-                    if reply_token:
-                        self.line.reply_message_to_user(reply_token, user_id, welcome_result.response_message)
-                    else:
-                        self.line.push_message_with_split(user_id, welcome_result.response_message)
-                
-                # Notify admin if needed
-                if welcome_result.notify_admin and welcome_result.admin_message:
-                    self.line.notify_admin(
-                        user_id=user_id,
-                        user_msg=welcome_result.admin_message,
-                        notification_type="org_complete"
-                    )
-                
-                # Update user context in ChatGPT if organization data is complete
-                if welcome_result.context_updated:
-                    try:
-                        # Get existing thread to update context
-                        thread_id = self.db.get_user_thread_id(user_id)
-                        if thread_id:
-                            self.ai._refresh_user_context(user_id, thread_id)
-                    except Exception as e:
-                        logger.error(f"Failed to update user context for {user_id}: {e}")
-                
-                # Block further processing
-                return
-            
-            # Check for handover request in combined content
-            if self.line.is_handover_request(combined_content):
-                self._handle_handover_request(virtual_message)
-                return
-            
-            # Get AI response for combined content
-            ai_response = self.ai.get_response(user_id, combined_content)
-            
-            # Determine final response
-            final_text = self._determine_final_response(virtual_message, ai_response)
-            
-            # Send reply
-            if reply_token:
-                self.line.reply_message_to_user(reply_token, user_id, final_text)
-            else:
-                # If no reply token, send as push message
-                self.line.push_message_with_split(user_id, final_text)
-            
-            log_user_action(
-                logger,
-                user_id,
-                "buffered_message_completed",
-                confidence=ai_response.confidence,
-                needs_review=ai_response.needs_human_review
-            )
+            # Use the same handler chain
+            self._handle_single_message(virtual_message)
             
         except Exception as e:
             logger.error(f"Failed to process buffered message for user {user_id}: {e}")
-            
-            # Send error response
-            try:
-                error_response = "系統處理您的訊息時發生錯誤，請稍後再試。"
-                if reply_token:
-                    self.line.reply_message_to_user(reply_token, user_id, error_response)
-                else:
-                    self.line.push_message(user_id, error_response)
-            except Exception as error_send_error:
-                logger.error(f"Failed to send error response: {error_send_error}")
+            self._send_error_response(user_id, reply_token)
     
-    def _handle_image_message(self, message: Message) -> None:
-        """Handle image messages by notifying admin."""
-        try:
-            self.line.notify_admin(
-                user_id=message.user_id,
-                user_msg="使用者傳送了一張圖片",
-                ai_reply="系統自動通知，請人工介入處理",
-                notification_type="image"
-            )
-            
-            if message.reply_token:
-                self.line.reply_message_to_user(
-                    message.reply_token,
-                    message.user_id,
-                    "已為您通知管理者，請稍候。"
+    def _handle_non_text_messages(self, message: Message) -> bool:
+        """Handle non-text messages (images, stickers, etc.)."""
+        if message.message_type == "image":
+            try:
+                self.line.notify_admin(
+                    user_id=message.user_id,
+                    user_msg="使用者傳送了一張圖片",
+                    ai_reply="系統自動通知，請人工介入處理",
+                    notification_type="image"
                 )
                 
-        except Exception as e:
-            logger.error(f"Failed to handle image message: {e}")
+                self.line.send_message(
+                    message.user_id,
+                    "已為您通知管理者，請稍候。",
+                    message.reply_token
+                )
+                return True
+                
+            except Exception as e:
+                logger.error(f"Failed to handle image message: {e}")
+                return True
+        
+        if message.message_type != "text":
+            logger.debug(f"Ignoring message type: {message.message_type}")
+            return True
+            
+        return False
     
-    def _handle_handover_request(self, message: Message) -> None:
+    def _handle_admin_commands(self, message: Message) -> bool:
+        """Handle admin commands."""
+        if not self._is_admin_user(message.user_id):
+            return False
+        
+        if not self.admin_commands.is_admin_command(message.content):
+            return False
+            
+        try:
+            logger.info(f"Processing admin command from {message.user_id}: {message.content}")
+            
+            log_user_action(
+                logger,
+                message.user_id,
+                "admin_command_received",
+                command=message.content
+            )
+            
+            command, args = self.admin_commands.parse_command(message.content)
+            result = self.admin_commands.execute_command(command, args)
+            
+            self.line.send_raw_message(
+                message.user_id,
+                result.message,
+                message.reply_token
+            )
+            
+            log_user_action(
+                logger,
+                message.user_id,
+                "admin_command_executed",
+                command=command,
+                success=result.success
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to handle admin command from {message.user_id}: {e}")
+            self.line.send_raw_message(
+                message.user_id,
+                "❌ 執行管理指令時發生錯誤，請稍後再試。",
+                message.reply_token
+            )
+            return True
+    
+    def _handle_welcome_flow(self, message: Message) -> bool:
+        """Handle welcome flow and organization data collection."""
+        try:
+            welcome_result = self.welcome_flow.process_message(message.user_id, message.content)
+            
+            if not welcome_result.should_block:
+                return False
+            
+            # Send response message if provided
+            if welcome_result.response_message:
+                self.line.send_message(
+                    message.user_id,
+                    welcome_result.response_message,
+                    message.reply_token
+                )
+            
+            # Notify admin if needed
+            if welcome_result.notify_admin and welcome_result.admin_message:
+                self.line.notify_admin(
+                    user_id=message.user_id,
+                    user_msg=welcome_result.admin_message,
+                    notification_type="org_complete"
+                )
+            
+            # Update user context in ChatGPT if organization data is complete
+            if welcome_result.context_updated:
+                try:
+                    thread_id = self.db.get_user_thread_id(message.user_id)
+                    if thread_id:
+                        self.ai._refresh_user_context(message.user_id, thread_id)
+                except Exception as e:
+                    logger.error(f"Failed to update user context for {message.user_id}: {e}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to handle welcome flow: {e}")
+            return False
+    
+    def _handle_handover_requests(self, message: Message) -> bool:
         """Handle requests for human handover."""
+        if not self.line.is_handover_request(message.content):
+            return False
+            
         try:
             self.line.notify_admin(
                 user_id=message.user_id,
@@ -282,15 +254,48 @@ class MessageProcessor:
                 notification_type="handover"
             )
             
-            if message.reply_token:
-                self.line.reply_message_to_user(
-                    message.reply_token,
-                    message.user_id,
-                    "已為您通知管理者，請稍候。"
-                )
-                
+            self.line.send_message(
+                message.user_id,
+                "已為您通知管理者，請稍候。",
+                message.reply_token
+            )
+            
+            return True
+            
         except Exception as e:
             logger.error(f"Failed to handle handover request: {e}")
+            return True
+    
+    def _handle_ai_response(self, message: Message) -> bool:
+        """Handle AI response generation and sending."""
+        try:
+            # Get AI response
+            ai_response = self.ai.get_response(message.user_id, message.content)
+            
+            # Determine final response based on confidence
+            final_text = self._determine_final_response(message, ai_response)
+            
+            # Send response
+            self.line.send_message(
+                message.user_id,
+                final_text,
+                message.reply_token
+            )
+            
+            log_user_action(
+                logger,
+                message.user_id,
+                "message_processed",
+                confidence=ai_response.confidence,
+                needs_review=ai_response.needs_human_review
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to get AI response: {e}")
+            self._send_error_response(message.user_id, message.reply_token)
+            return True
     
     def _determine_final_response(self, message: Message, ai_response: AIResponse) -> str:
         """
@@ -346,59 +351,18 @@ class MessageProcessor:
         logger.debug(f"Admin check: user_id={user_id}, admin_user_id={config.line.admin_user_id}, is_admin={is_admin}")
         return is_admin
     
-    def _handle_admin_command(self, message: Message) -> None:
-        """Handle admin command execution."""
+    
+    def _send_error_response(self, user_id: str, reply_token: str = None) -> None:
+        """Send error response to user."""
         try:
-            log_user_action(
-                logger,
-                message.user_id,
-                "admin_command_received",
-                command=message.content
-            )
-            
-            # Parse and execute command
-            command, args = self.admin_commands.parse_command(message.content)
-            result = self.admin_commands.execute_command(command, args)
-            
-            # Send response using raw reply (no text processing for admin commands)
-            if message.reply_token:
-                self.line.reply_message_raw(
-                    message.reply_token,
-                    result.message
-                )
-                
-            log_user_action(
-                logger,
-                message.user_id,
-                "admin_command_executed",
-                command=command,
-                success=result.success
-            )
-            
+            error_response = "系統處理您的訊息時發生錯誤，請稍後再試。"
+            self.line.send_message(user_id, error_response, reply_token)
         except Exception as e:
-            logger.error(f"Failed to handle admin command from {message.user_id}: {e}")
-            
-            # Send error response using raw reply (no processing for admin commands)
-            try:
-                error_message = "❌ 執行管理指令時發生錯誤，請稍後再試。"
-                if message.reply_token:
-                    self.line.reply_message_raw(
-                        message.reply_token,
-                        error_message
-                    )
-            except Exception as error_send_error:
-                logger.error(f"Failed to send admin command error response: {error_send_error}")
+            logger.error(f"Failed to send error response: {e}")
     
     def _handle_processing_error(self, message: Message, error: Exception) -> None:
         """Handle errors during message processing."""
-        try:
-            error_response = "系統發生錯誤，請稍後再試。"
-            
-            if message.reply_token:
-                self.line.reply_message_to_user(message.reply_token, message.user_id, error_response)
-                
-        except Exception as e:
-            logger.error(f"Failed to send error response: {e}")
+        self._send_error_response(message.user_id, message.reply_token)
         
         # Log the error with context
         from src.utils import log_error_with_context

@@ -52,7 +52,8 @@ def mock_openai_service():
 def mock_line_service():
     """Mock LINE service for testing."""
     mock_line = Mock(spec=LineService)
-    mock_line.reply_message.return_value = None
+    mock_line.send_message.return_value = None
+    mock_line.send_raw_message.return_value = None
     mock_line.push_message.return_value = None
     mock_line.notify_admin.return_value = None
     mock_line.is_handover_request.return_value = False
@@ -110,10 +111,30 @@ def low_confidence_ai_response():
 
 
 @pytest.fixture
-def message_processor(mock_database_service, mock_openai_service, mock_line_service):
+def mock_welcome_flow_manager():
+    """Mock welcome flow manager for testing."""
+    mock_welcome = Mock()
+    mock_welcome.process_message.return_value = Mock(should_block=False)
+    return mock_welcome
+
+
+@pytest.fixture
+def mock_admin_command_service():
+    """Mock admin command service for testing."""
+    mock_admin = Mock()
+    mock_admin.is_admin_command.return_value = False
+    mock_admin.commands = {}  # Add commands attribute for mock
+    return mock_admin
+
+
+@pytest.fixture
+def message_processor(mock_database_service, mock_openai_service, mock_line_service, 
+                     mock_welcome_flow_manager, mock_admin_command_service):
     """Message processor with mocked dependencies."""
     return MessageProcessor(
         database_service=mock_database_service,
         openai_service=mock_openai_service,
-        line_service=mock_line_service
+        line_service=mock_line_service,
+        welcome_flow_manager=mock_welcome_flow_manager,
+        admin_command_service=mock_admin_command_service
     )

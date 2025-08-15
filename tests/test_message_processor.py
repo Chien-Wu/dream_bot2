@@ -31,9 +31,10 @@ class TestMessageProcessor:
             sample_text_message.user_id, 
             sample_text_message.content
         )
-        mock_line_service.reply_message.assert_called_once_with(
-            sample_text_message.reply_token,
-            sample_ai_response.text
+        mock_line_service.send_message.assert_called_once_with(
+            sample_text_message.user_id,
+            sample_ai_response.text,
+            sample_text_message.reply_token
         )
         mock_line_service.notify_admin.assert_not_called()
     
@@ -59,9 +60,10 @@ class TestMessageProcessor:
             ai_reply=low_confidence_ai_response.text,
             confidence=low_confidence_ai_response.confidence
         )
-        mock_line_service.reply_message.assert_called_once_with(
-            sample_text_message.reply_token,
-            "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
+        mock_line_service.send_message.assert_called_once_with(
+            sample_text_message.user_id,
+            "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！",
+            sample_text_message.reply_token
         )
     
     def test_process_image_message(
@@ -80,9 +82,10 @@ class TestMessageProcessor:
             user_msg="使用者傳送了一張圖片",
             ai_reply="系統自動通知，請人工介入處理"
         )
-        mock_line_service.reply_message.assert_called_once_with(
-            sample_image_message.reply_token,
-            "已為您通知管理者，請稍候。"
+        mock_line_service.send_message.assert_called_once_with(
+            sample_image_message.user_id,
+            "已為您通知管理者，請稍候。",
+            sample_image_message.reply_token
         )
     
     def test_process_handover_request(
@@ -108,9 +111,10 @@ class TestMessageProcessor:
             user_id=handover_message.user_id,
             user_msg=handover_message.content
         )
-        mock_line_service.reply_message.assert_called_once_with(
-            handover_message.reply_token,
-            "已為您通知管理者，請稍候。"
+        mock_line_service.send_message.assert_called_once_with(
+            handover_message.user_id,
+            "已為您通知管理者，請稍候。",
+            handover_message.reply_token
         )
     
     def test_process_message_error_handling(
@@ -128,7 +132,8 @@ class TestMessageProcessor:
         message_processor.process_message(sample_text_message)
         
         # Verify error response is sent
-        mock_line_service.reply_message.assert_called_once_with(
-            sample_text_message.reply_token,
-            "系統發生錯誤，請稍後再試。"
+        mock_line_service.send_message.assert_called_once_with(
+            sample_text_message.user_id,
+            "系統處理您的訊息時發生錯誤，請稍後再試。",
+            sample_text_message.reply_token
         )
