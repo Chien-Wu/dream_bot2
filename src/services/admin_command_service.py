@@ -3,6 +3,7 @@ Professional admin command service for LINE Bot management.
 Provides modular, extensible command system for administrative tasks.
 """
 import re
+import time
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from datetime import datetime
@@ -10,6 +11,7 @@ from datetime import datetime
 from src.utils import setup_logger
 from src.services.database_service import DatabaseService
 from src.services.line_service import LineService
+
 
 
 logger = setup_logger(__name__)
@@ -769,6 +771,12 @@ class AdminCommandService:
             AI analysis result as formatted string
         """
         try:
+            # Check if OpenAI API key is available
+            from config import config
+            if not config.openai.api_key:
+                logger.error("OpenAI API key not available for analysis")
+                return "OpenAI API金鑰未設定，無法進行AI分析"
+            
             # Prepare questions for AI analysis
             questions_text = ""
             for i, q in enumerate(questions, 1):
@@ -796,22 +804,65 @@ class AdminCommandService:
 
 請用繁體中文，保持簡潔。"""
 
-            # Use OpenAI for analysis
-            from src.services.openai_service import OpenAIService
-            from src.core import container
+            # Use OpenAI Completion API directly (separate from user Assistant)
+            logger.info(f"Sending analysis prompt to OpenAI Completion API (prompt length: {len(analysis_prompt)})")
             
-            # Get OpenAI service from container
-            openai_service = container.resolve(OpenAIService)
+            analysis_result = self._call_openai_completion(analysis_prompt)
             
-            # Create a temporary user for analysis (admin analysis)
-            analysis_response = openai_service.get_response("admin_analysis_user", analysis_prompt)
-            
-            if analysis_response and hasattr(analysis_response, 'text'):
-                return analysis_response.text
+            if analysis_result and analysis_result.strip():
+                logger.info("AI analysis completed successfully")
+                return analysis_result.strip()
             else:
-                logger.error("No valid response from AI analysis")
-                return "AI分析未能產生有效結果"
+                logger.error("AI analysis returned empty or invalid result")
+                return "AI分析未能產生有效結果，請稍後再試"
                 
         except Exception as e:
             logger.error(f"Error in AI analysis: {e}")
             return f"AI分析過程發生錯誤: {str(e)}"
+    
+    def _call_openai_completion(self, prompt: str) -> Optional[str]:
+        """
+        Call OpenAI Completion API directly (separate from user Assistant).
+        
+        Args:
+            prompt: Analysis prompt to send
+            
+        Returns:
+            AI response text or None if failed
+        """
+        try:
+            from openai import OpenAI
+            from config import config
+            
+            # Create separate OpenAI client for admin analysis
+            client = OpenAI(api_key=config.openai.api_key)
+            
+            # Use chat completion API for analysis
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",  # Use efficient model for analysis
+                messages=[
+                    {
+                        "role": "system", 
+                        "content": "你是一個專業的問題分析專家，專門分析用戶問題並提供結構化的分析報告。請嚴格按照要求的格式回答。"
+                    },
+                    {
+                        "role": "user", 
+                        "content": prompt
+                    }
+                ],
+                max_tokens=1000,
+                temperature=0.3,  # Lower temperature for more consistent analysis
+                timeout=30
+            )
+            
+            if response.choices and len(response.choices) > 0:
+                result = response.choices[0].message.content
+                logger.debug(f"OpenAI completion API response length: {len(result) if result else 0}")
+                return result
+            else:
+                logger.error("No valid response from OpenAI completion API")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error calling OpenAI completion API: {e}")
+            return None
