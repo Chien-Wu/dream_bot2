@@ -175,12 +175,11 @@ class MessageProcessor:
                 command=message.content
             )
             
-            command, args = self.admin_commands.parse_command(message.content)
-            result = self.admin_commands.execute_command(command, args)
+            response = self.admin_commands.execute_command(message.content)
             
             self.line.send_raw_message(
                 message.user_id,
-                result.message,
+                response,
                 message.reply_token
             )
             
@@ -188,8 +187,8 @@ class MessageProcessor:
                 logger,
                 message.user_id,
                 "admin_command_executed",
-                command=command,
-                success=result.success
+                command=message.content.split()[0] if message.content.split() else "",
+                success=True
             )
             
             return True

@@ -9,6 +9,7 @@
 - **Message Buffering**: 智能訊息緩衝，整合短訊息提供完整上下文
 - **Taiwan-Focused**: 針對台灣社會福利組織優化的搜尋與回應
 - **Organization Data Management**: 完整的組織資料管理與分析
+- **Admin Commands**: 簡潔的管理員指令系統，支援用戶查詢、問題分析
 - **Confidence-Based Routing**: 基於信心度的自動人工轉接
 - **Robust Architecture**: 清晰的架構分離與依賴注入
 - **Comprehensive Logging**: 結構化日誌記錄，支援不同級別和輸出
