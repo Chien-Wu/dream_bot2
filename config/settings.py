@@ -58,13 +58,6 @@ class MessageBufferConfig:
     min_length: int = int(os.getenv('MESSAGE_BUFFER_MIN_LENGTH', '50'))
 
 
-@dataclass
-class SearchConfig:
-    """Web search configuration settings."""
-    default_num_results: int = int(os.getenv('SEARCH_DEFAULT_RESULTS', '5'))
-    max_results: int = int(os.getenv('SEARCH_MAX_RESULTS', '10'))
-    timeout: float = float(os.getenv('SEARCH_TIMEOUT', '120.0'))
-
 
 @dataclass
 class AppConfig:
@@ -83,14 +76,12 @@ class AppConfig:
     line: LineConfig = None
     openai: OpenAIConfig = None
     message_buffer: MessageBufferConfig = None
-    search: SearchConfig = None
     
     def __post_init__(self):
         self.database = DatabaseConfig()
         self.line = LineConfig()
         self.openai = OpenAIConfig()
         self.message_buffer = MessageBufferConfig()
-        self.search = SearchConfig()
 
 
 # Global configuration instance

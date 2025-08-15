@@ -5,7 +5,6 @@
 ## 🚀 Features
 
 - **AI-Powered Conversations**: 整合 OpenAI Assistant API 提供智能對話
-- **Web Search Integration**: 使用 OpenAI web search 提供最新資訊
 - **Message Buffering**: 智能訊息緩衝，整合短訊息提供完整上下文
 - **Taiwan-Focused**: 針對台灣社會福利組織優化的搜尋與回應
 - **Organization Data Management**: 完整的組織資料管理與分析
@@ -32,7 +31,6 @@ dream_line_bot_v2/
 │   │   ├── database_service.py
 │   │   ├── openai_service.py
 │   │   ├── line_service.py
-│   │   ├── web_search_service.py
 │   │   ├── function_handler.py
 │   │   ├── organization_analyzer.py
 │   │   └── welcome_flow_manager.py
@@ -56,7 +54,6 @@ dream_line_bot_v2/
 
 - **MessageProcessor**: 所有訊息處理的中央協調器
 - **MessageBuffer**: 智能訊息緩衝，整合短訊息為完整上下文
-- **WebSearchService**: OpenAI web search 整合，提供最新資訊
 - **FunctionHandler**: OpenAI Assistant 功能調用處理器
 - **OrganizationAnalyzer**: 組織資料分析與管理
 - **WelcomeFlowManager**: 新用戶歡迎流程管理
@@ -119,7 +116,6 @@ dream_line_bot_v2/
    # Optional: Timeout Configuration
    OPENAI_POLL_MAX_RETRIES=120
    OPENAI_POLL_INTERVAL=2.0
-   SEARCH_TIMEOUT=120.0
    
    # Optional: Message Buffer Configuration
    MESSAGE_BUFFER_TIMEOUT=10.0
@@ -175,7 +171,6 @@ All configuration is managed through environment variables.
 | `AI_CONFIDENCE_THRESHOLD`    | Confidence threshold for human handover | `0.83`        |
 | `OPENAI_POLL_MAX_RETRIES`    | Max retries for OpenAI API              | `120`         |
 | `OPENAI_POLL_INTERVAL`       | Poll interval for OpenAI API (seconds)  | `2.0`         |
-| `SEARCH_TIMEOUT`             | Web search timeout (seconds)            | `120.0`       |
 | `MESSAGE_BUFFER_TIMEOUT`     | Message buffer timeout (seconds)        | `10.0`        |
 | `MESSAGE_BUFFER_MAX_SIZE`    | Max messages in buffer                  | `10`          |
 | `MESSAGE_BUFFER_MIN_LENGTH`  | Min length for immediate processing     | `50`          |
@@ -224,47 +219,22 @@ pytest tests/test_message_processor.py
 長訊息/完整內容 → 直接處理
 ```
 
-### 2. Web Search Integration
-
-```
-用戶查詢 → AI Assistant → 觸發 web_search 功能 → OpenAI Web Search → 台灣特化結果
-```
-
-### 3. Complete Processing Flow
+### 2. Complete Processing Flow
 
 1. **Message Received**: LINE webhook 接收用戶訊息
 2. **Message Buffering**: 短訊息進入緩衝器，長訊息直接處理
 3. **Context Assembly**: 緩衝器整合多個短訊息為完整上下文
 4. **AI Processing**: 發送至 OpenAI Assistant API
-5. **Function Calls**: AI 可調用 web search 等功能
+5. **Function Calls**: AI 可調用組織查詢、數據更新等功能
 6. **Confidence Evaluation**: 評估 AI 回應信心度
 7. **Response Routing**: 發送 AI 回應或轉接人工
 8. **Logging**: 記錄互動用於分析和調試
-
-## 🔍 Web Search Features
-
-### Taiwan-Focused Search
-
-- **自動關鍵詞增強**: 為查詢添加台灣相關詞彙
-- **政府資源優先**: 重點關注政府政策和法規
-- **社會福利專門化**: 針對社會福利措施和補助
-- **結構化回應**: JSON 格式回應，包含摘要、來源、關鍵發現
-
-### Search Configuration
-
-```python
-# 可在 .env 中調整搜尋設定
-SEARCH_DEFAULT_RESULTS=5     # 預設結果數量
-SEARCH_MAX_RESULTS=10        # 最大結果數量
-SEARCH_TIMEOUT=120.0         # 搜尋超時時間
-```
 
 ## 📈 Performance
 
 ### Optimized Timeouts
 
 - **AI Processing**: 4 分鐘總超時時間 (120 retries × 2s)
-- **Web Search**: 2 分鐘搜尋超時
 - **Message Buffer**: 10 秒緩衝超時
 
 ### Benchmarks
@@ -278,10 +248,6 @@ SEARCH_TIMEOUT=120.0         # 搜尋超時時間
 
 ### Common Issues
 
-**Web Search Timeouts**
-- 增加 `SEARCH_TIMEOUT` 環境變數
-- 調整 `OPENAI_POLL_MAX_RETRIES` 設定
-- 檢查 OpenAI API 配額
 
 **Message Buffer Issues**
 - 調整 `MESSAGE_BUFFER_TIMEOUT` 設定
@@ -314,7 +280,6 @@ python main.py
 - [ ] Set up SSL certificates
 - [ ] Configure monitoring and alerting
 - [ ] Set up log aggregation
-- [ ] Test web search functionality
 - [ ] Verify message buffering works correctly
 
 ## 🤝 Contributing
@@ -342,7 +307,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- OpenAI for the Assistant API and web search capabilities
+- OpenAI for the Assistant API
 - LINE Corporation for the Bot SDK
 - Flask community for the web framework
 - All contributors and maintainers
