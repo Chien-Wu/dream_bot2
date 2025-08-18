@@ -46,6 +46,17 @@ class AIResponse:
     timestamp: Optional[datetime] = None
     metadata: Optional[dict] = None
     
+    # Extended schema fields (optional for backward compatibility)
+    intent: Optional[str] = None
+    queries: Optional[list] = None
+    sources: Optional[list] = None
+    gaps: Optional[list] = None
+    policy_scope: Optional[str] = None
+    policy_risk: Optional[str] = None
+    policy_pii: Optional[str] = None
+    policy_escalation: Optional[str] = None
+    notes: Optional[str] = None
+    
     def __post_init__(self):
         if self.timestamp is None:
             self.timestamp = datetime.now()

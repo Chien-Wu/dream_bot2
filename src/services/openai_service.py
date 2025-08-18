@@ -290,8 +290,8 @@ class OpenAIService:
         parsed_response = self._parse_response(response_text)
         parsed_response.user_id = user_id
         
-        # Log interaction
-        self.db.log_message(
+        # Log interaction and get message_history_id
+        message_history_id = self.db.log_message(
             user_id=user_id,
             content=user_input,
             ai_response=parsed_response.text,
@@ -299,11 +299,15 @@ class OpenAIService:
             confidence=parsed_response.confidence
         )
         
+        # Save detailed AI analysis if available
+        if message_history_id:
+            self.db.save_ai_detail(message_history_id, parsed_response)
+        
         return parsed_response
     
     def _parse_response(self, response_text: str) -> AIResponse:
         """Parse AI response and extract confidence score and explanation."""
-        # Parse JSON response format: {"text": "...", "explanation": "...", "confidence": 0.00}
+        # Parse JSON response format with extended schema
         try:
             import json
             parsed = json.loads(response_text)
@@ -311,7 +315,17 @@ class OpenAIService:
                 text=parsed.get("text", response_text),
                 confidence=parsed.get("confidence", 1.0),
                 explanation=parsed.get("explanation"),
-                user_id=""  # Will be set by caller
+                user_id="",  # Will be set by caller
+                # Extended schema fields
+                intent=parsed.get("intent"),
+                queries=parsed.get("queries"),
+                sources=parsed.get("sources"),
+                gaps=parsed.get("gaps"),
+                policy_scope=parsed.get("policy_scope"),
+                policy_risk=parsed.get("policy_risk"),
+                policy_pii=parsed.get("policy_pii"),
+                policy_escalation=parsed.get("policy_escalation"),
+                notes=parsed.get("notes")
             )
         except (json.JSONDecodeError, KeyError) as e:
             # Log fallback for debugging

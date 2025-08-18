@@ -31,5 +31,25 @@ CREATE TABLE IF NOT EXISTS message_history (
     INDEX idx_created_at (created_at)
 );
 
+-- AI detail table for comprehensive AI response analysis
+CREATE TABLE IF NOT EXISTS ai_detail (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    message_history_id INT,
+    intent VARCHAR(50),
+    queries JSON,
+    sources JSON,
+    gaps JSON,
+    policy_scope TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    policy_risk TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    policy_pii TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    policy_escalation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    notes TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_message_history_id (message_history_id),
+    INDEX idx_intent (intent),
+    INDEX idx_created_at (created_at),
+    FOREIGN KEY (message_history_id) REFERENCES message_history(id) ON DELETE CASCADE
+);
+
 -- Note: ai_explanation column is already included in the CREATE TABLE statement above
 -- For existing installations, the column addition is handled programmatically in the DatabaseService

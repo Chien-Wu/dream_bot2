@@ -131,7 +131,6 @@ class DatabaseService:
                 cursor.execute(create_organization_sql)
                 
                 # Add explanation column if it doesn't exist (for existing installations)
-                # Check if column exists first, then add if missing
                 cursor.execute("SHOW COLUMNS FROM message_history LIKE 'ai_explanation'")
                 column_exists = cursor.fetchone()
                 
@@ -141,6 +140,37 @@ class DatabaseService:
                     logger.info("ai_explanation column added successfully")
                 else:
                     logger.info("ai_explanation column already exists")
+                
+                # Create ai_detail table if it doesn't exist (for existing installations)
+                cursor.execute("SHOW TABLES LIKE 'ai_detail'")
+                table_exists = cursor.fetchone()
+                
+                if not table_exists:
+                    logger.info("Creating ai_detail table...")
+                    create_ai_detail_sql = """
+                        CREATE TABLE ai_detail (
+                            id INT PRIMARY KEY AUTO_INCREMENT,
+                            message_history_id INT,
+                            intent VARCHAR(50),
+                            queries JSON,
+                            sources JSON,
+                            gaps JSON,
+                            policy_scope TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                            policy_risk TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                            policy_pii TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                            policy_escalation TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                            notes TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            INDEX idx_message_history_id (message_history_id),
+                            INDEX idx_intent (intent),
+                            INDEX idx_created_at (created_at),
+                            FOREIGN KEY (message_history_id) REFERENCES message_history(id) ON DELETE CASCADE
+                        )
+                    """
+                    cursor.execute(create_ai_detail_sql)
+                    logger.info("ai_detail table created successfully")
+                else:
+                    logger.info("ai_detail table already exists")
                 
                 conn.commit()
                 
@@ -200,7 +230,7 @@ class DatabaseService:
             raise DatabaseError(f"Failed to reset thread: {e}")
     
     def log_message(self, user_id: str, content: str, message_type: str = "text", 
-                   ai_response: str = None, ai_explanation: str = None, confidence: float = None) -> None:
+                   ai_response: str = None, ai_explanation: str = None, confidence: float = None) -> int:
         """Log message interaction to database."""
         try:
             with self.get_connection() as conn:
@@ -211,9 +241,71 @@ class DatabaseService:
                     VALUES (%s, %s, %s, %s, %s, %s)
                 """, (user_id, content, message_type, ai_response, ai_explanation, confidence))
                 conn.commit()
+                return cursor.lastrowid  # Return message_history ID for linking
                 
         except Exception as e:
             logger.error(f"Failed to log message for user {user_id}: {e}")
+            # Don't raise exception for logging failures to avoid disrupting main flow
+            return None
+    
+    def save_ai_detail(self, message_history_id: int, ai_response) -> None:
+        """Save AI detail data to ai_detail table."""
+        try:
+            logger.info(f"[AI_DETAIL] Starting save_ai_detail for message_history_id: {message_history_id}")
+            
+            # Check if message_history_id is valid
+            if not message_history_id:
+                logger.warning(f"[AI_DETAIL] Invalid message_history_id: {message_history_id}")
+                return
+            
+            # Check what extended data we have
+            has_data = {
+                'intent': bool(ai_response.intent),
+                'queries': bool(ai_response.queries),
+                'sources': bool(ai_response.sources),
+                'gaps': bool(ai_response.gaps),
+                'policy_escalation': bool(ai_response.policy_escalation),
+                'policy_scope': bool(ai_response.policy_scope),
+                'policy_risk': bool(ai_response.policy_risk),
+                'policy_pii': bool(ai_response.policy_pii),
+                'notes': bool(ai_response.notes)
+            }
+            
+            logger.info(f"[AI_DETAIL] Extended data check: {has_data}")
+            
+            # Only save if we have any extended schema data
+            if not any(has_data.values()):
+                logger.info(f"[AI_DETAIL] No extended data to save, skipping")
+                return
+            
+            import json
+            
+            logger.info(f"[AI_DETAIL] Proceeding to save data to database")
+            
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO ai_detail 
+                    (message_history_id, intent, queries, sources, gaps, 
+                     policy_scope, policy_risk, policy_pii, policy_escalation, notes) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    message_history_id,
+                    ai_response.intent,
+                    json.dumps(ai_response.queries) if ai_response.queries else None,
+                    json.dumps(ai_response.sources) if ai_response.sources else None,
+                    json.dumps(ai_response.gaps) if ai_response.gaps else None,
+                    ai_response.policy_scope,
+                    ai_response.policy_risk,
+                    ai_response.policy_pii,
+                    ai_response.policy_escalation,
+                    ai_response.notes
+                ))
+                conn.commit()
+                logger.info(f"[AI_DETAIL] Successfully saved AI detail for message_history_id: {message_history_id}")
+                
+        except Exception as e:
+            logger.error(f"[AI_DETAIL] Failed to save AI detail for message_history_id {message_history_id}: {e}")
             # Don't raise exception for logging failures to avoid disrupting main flow
             pass
     
