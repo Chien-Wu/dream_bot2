@@ -271,15 +271,38 @@ class MessageProcessor:
             # Get AI response
             ai_response = self.ai.get_response(message.user_id, message.content)
             
-            # Determine final response based on confidence
-            final_text = self._determine_final_response(message, ai_response)
+            # Send normal response first
+            if ai_response.needs_human_review:
+                # Notify admin for low confidence responses
+                try:
+                    self.line.notify_admin(
+                        user_id=message.user_id,
+                        user_msg=message.content,
+                        ai_reply=ai_response.text,
+                        confidence=ai_response.confidence,
+                        ai_explanation=ai_response.explanation,
+                        notification_type="low_confidence"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to notify admin: {e}")
+                
+                # Low confidence - send handover message
+                handover_message = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
+                self.line.send_message(message.user_id, handover_message, message.reply_token)
+            else:
+                # High confidence - send AI response
+                self.line.send_message(message.user_id, ai_response.text, message.reply_token)
             
-            # Send response
-            self.line.send_message(
-                message.user_id,
-                final_text,
-                message.reply_token
-            )
+            # Push debug info separately if enabled
+            if config.show_ai_debug_info:
+                debug_info = "🔧 AI詳細資訊：\n"
+                if ai_response.explanation:
+                    debug_info += f"AI說明：\n{ai_response.explanation}\n"
+                debug_info += f"信心度：{ai_response.confidence:.2f}"
+                
+                # Push debug info as separate message
+                time.sleep(0.5)  # Small delay to ensure proper message order
+                self.line.push_message(message.user_id, debug_info)
             
             log_user_action(
                 logger,
@@ -295,54 +318,6 @@ class MessageProcessor:
             logger.error(f"Failed to get AI response: {e}")
             self._send_error_response(message.user_id, message.reply_token)
             return True
-    
-    def _determine_final_response(self, message: Message, ai_response: AIResponse) -> str:
-        """
-        Determine final response based on AI confidence.
-        
-        Args:
-            message: Original user message
-            ai_response: AI response with confidence
-            
-        Returns:
-            Final response text to send to user
-        """
-        if ai_response.needs_human_review:
-            # Notify admin for low confidence responses
-            try:
-                self.line.notify_admin(
-                    user_id=message.user_id,
-                    user_msg=message.content,
-                    ai_reply=ai_response.text,
-                    confidence=ai_response.confidence,
-                    ai_explanation=ai_response.explanation,
-                    notification_type="low_confidence"
-                )
-            except Exception as e:
-                logger.error(f"Failed to notify admin: {e}")
-            
-            # For low confidence: show debug info if switch is on
-            if config.show_ai_debug_info:
-                debug_response = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！\n\n"
-                debug_response += "🔧 AI詳細資訊：\n"
-                debug_response += f"AI回覆：{ai_response.text}\n"
-                if ai_response.explanation:
-                    debug_response += f"AI說明：{ai_response.explanation}\n"
-                debug_response += f"信心度：{ai_response.confidence:.2f}"
-                return debug_response
-            else:
-                return "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
-        
-        # For high confidence: build response based on debug switch
-        response_parts = [ai_response.text]
-        
-        if config.show_ai_debug_info:
-            # Show explanation and confidence when debug switch is on
-            if ai_response.explanation:
-                response_parts.append(f"\n\n📋 詳細說明：\n{ai_response.explanation}")
-            response_parts.append(f"\n\n🔧 信心度：{ai_response.confidence:.2f}")
-        
-        return "".join(response_parts)
     
     def _is_admin_user(self, user_id: str) -> bool:
         """Check if user is an admin."""
