@@ -101,11 +101,6 @@ class OpenAIService:
                 "thread_id": thread_id,
                 "assistant_id": self.config.assistant_id
             }
-            
-            # Add function definitions if function handler is available
-            # if self.function_handler:
-            #     run_params["tools"] = self.function_handler.get_function_definitions()
-            
             run = self.client.beta.threads.runs.create(**run_params)
             return run.id
         except Exception as e:

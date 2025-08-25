@@ -80,6 +80,26 @@ class LineService:
         
         return cleaned_text
     
+    def _format_numbered_lists(self, text: str) -> str:
+        """
+        Format numbered lists by adding line breaks before each number.
+        
+        Args:
+            text: Text containing numbered lists
+            
+        Returns:
+            Formatted text with line breaks
+        """
+        # Pattern to match numbered lists: digit followed by dot and space, or Chinese numbers
+        # Matches: "1. ", "2. ", "一、", "二、", etc.
+        numbered_pattern = r'(\d+\.\s+|[一二三四五六七八九十]+[、．]\s*)'
+        
+        # Add newlines before numbered items, but not at the start of text
+        formatted_text = re.sub(r'(?<!^)(?<![\n\r])(\d+\.\s+)', r'\n\1', text)
+        formatted_text = re.sub(r'(?<!^)(?<![\n\r])([一二三四五六七八九十]+[、．]\s*)', r'\n\1', formatted_text)
+        
+        return formatted_text
+    
     def _split_text_by_sentence_endings(self, text: str) -> List[str]:
         """
         Split text by sentence ending punctuation marks including Chinese periods, question marks, and exclamation marks.
@@ -214,7 +234,8 @@ class LineService:
         Returns:
             Processed text
         """
-        return self._clean_reference_brackets(text)
+        cleaned_text = self._clean_reference_brackets(text)
+        return self._format_numbered_lists(cleaned_text)
     
     def _send_with_reply(self, reply_token: str, text_segments: List[str], user_id: str) -> None:
         """
@@ -301,16 +322,13 @@ class LineService:
             
             title = titles.get(notification_type, "用戶需要人工協助")
             
-            notification_text = f"{title}\n\n"
-            notification_text += f"用戶: {user_nickname}\n"
+            notification_text = f"關鍵字: {title}\n"
             notification_text += f"用戶訊息: {user_msg}\n"
             
             if ai_reply:
                 notification_text += f"AI回覆: {ai_reply}\n"
-            if ai_explanation:
-                notification_text += f"AI說明: {ai_explanation}\n"
             if confidence is not None:
-                notification_text += f"信心度: {confidence:.2f}\n"
+                notification_text += f"信心度: {confidence:.2f}"
             
             self.push_message(self.config.admin_user_id, notification_text)
             logger.info(f"Notified admin about user {user_nickname} ({notification_type})")
