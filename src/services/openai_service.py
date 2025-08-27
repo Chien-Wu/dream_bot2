@@ -13,7 +13,6 @@ from config import config
 from src.utils import setup_logger, OpenAIError, TimeoutError
 from src.models import AIResponse
 from src.services.database_service import DatabaseService
-from src.services.function_handler import FunctionHandler
 
 
 logger = setup_logger(__name__)
@@ -24,10 +23,9 @@ logger = setup_logger(__name__)
 class OpenAIService:
     """Service for OpenAI Assistant API interactions."""
     
-    def __init__(self, database_service: DatabaseService, function_handler: FunctionHandler = None):
+    def __init__(self, database_service: DatabaseService):
         self.config = config.openai
         self.db = database_service
-        self.function_handler = function_handler
         
         # Initialize OpenAI client with v2 beta header
         self.client = OpenAI(
@@ -108,7 +106,7 @@ class OpenAIService:
             raise OpenAIError(f"Run start failed: {e}")
     
     def _wait_for_completion(self, thread_id: str, run_id: str, user_id: str) -> bool:
-        """Wait for run completion with timeout and handle function calls."""
+        """Wait for run completion with timeout."""
         try:
             for attempt in range(self.config.max_poll_retries):
                 try:
@@ -119,15 +117,8 @@ class OpenAIService:
                     
                     if run_status.status == "completed":
                         return True
-                        
-                    elif run_status.status == "requires_action":
-                        # Handle function calls
-                        if self._handle_function_calls(thread_id, run_id, run_status, user_id):
-                            continue  # Continue polling after handling function calls
-                        else:
-                            return False
                             
-                    elif run_status.status in ["failed", "cancelled", "expired"]:
+                    elif run_status.status in ["failed", "cancelled", "expired", "requires_action"]:
                         logger.error(f"Run {run_id} failed with status: {run_status.status}")
                         return False
                         
@@ -144,53 +135,6 @@ class OpenAIService:
             logger.error(f"Error in wait_for_completion: {e}")
             return False
     
-    def _handle_function_calls(self, thread_id: str, run_id: str, run_status, user_id: str) -> bool:
-        """Handle function calls from the assistant."""
-        try:
-            if not self.function_handler:
-                logger.error("Function handler not available for function calls")
-                return False
-            
-            if not run_status.required_action:
-                return False
-            
-            tool_outputs = []
-            
-            # Process each tool call
-            for tool_call in run_status.required_action.submit_tool_outputs.tool_calls:
-                if tool_call.type == "function":
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
-                    
-                    # Inject the actual user_id into function arguments if needed
-                    if 'user_id' in function_args and function_args['user_id'] in ['user', 'current_user', '']:
-                        function_args['user_id'] = user_id
-                    
-                    logger.info(f"Executing function: {function_name}")
-                    
-                    # Execute the function
-                    result = self.function_handler.execute_function(function_name, function_args)
-                    
-                    # Format the result for the assistant
-                    tool_outputs.append({
-                        "tool_call_id": tool_call.id,
-                        "output": json.dumps(result, ensure_ascii=False)
-                    })
-            
-            # Submit tool outputs back to the run
-            if tool_outputs:
-                self.client.beta.threads.runs.submit_tool_outputs(
-                    thread_id=thread_id,
-                    run_id=run_id,
-                    tool_outputs=tool_outputs
-                )
-                logger.info(f"Submitted {len(tool_outputs)} tool outputs")
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error handling function calls: {e}")
-            return False
     
     def _get_latest_response(self, thread_id: str) -> Optional[str]:
         """Get the latest assistant response from thread."""
