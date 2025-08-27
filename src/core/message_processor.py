@@ -136,7 +136,6 @@ class MessageProcessor:
                 self.line.notify_admin(
                     user_id=message.user_id,
                     user_msg="使用者傳送了一張圖片",
-                    ai_reply="系統自動通知，請人工介入處理",
                     notification_type="image"
                 )
                 
@@ -275,13 +274,20 @@ class MessageProcessor:
             if ai_response.needs_human_review:
                 # Notify admin for low confidence responses
                 try:
+                    # Extract first query "q" field if available
+                    ai_query = None
+                    if ai_response.queries and len(ai_response.queries) > 0:
+                        first_query = ai_response.queries[0]
+                        if isinstance(first_query, dict) and "q" in first_query:
+                            ai_query = first_query["q"]
+                    
                     self.line.notify_admin(
                         user_id=message.user_id,
                         user_msg=message.content,
-                        ai_reply=ai_response.text,
                         confidence=ai_response.confidence,
                         ai_explanation=ai_response.explanation,
-                        notification_type="low_confidence"
+                        notification_type="low_confidence",
+                        ai_query=ai_query
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify admin: {e}")

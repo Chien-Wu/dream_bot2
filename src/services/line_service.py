@@ -289,19 +289,20 @@ class LineService:
         return "invalid reply token" in error_msg or "reply token" in error_msg
     
     def notify_admin(self, user_id: str, user_msg: str, 
-                    ai_reply: str = None, confidence: float = None,
+                    confidence: float = None,
                     ai_explanation: str = None,
-                    notification_type: str = "handover") -> None:
+                    notification_type: str = "handover",
+                    ai_query: str = None) -> None:
         """
         Notify admin about user interaction requiring attention.
         
         Args:
             user_id: User ID who sent the message
             user_msg: User's original message
-            ai_reply: AI's response (if any)
             confidence: AI confidence score (if any)
             ai_explanation: AI's explanation (if any)
             notification_type: Type of notification (handover, new_user, org_complete, image)
+            ai_query: AI query to use as keyword (if any)
         """
         if not self.config.admin_user_id:
             logger.warning("Admin user ID not configured, skipping notification")
@@ -322,11 +323,11 @@ class LineService:
             
             title = titles.get(notification_type, "用戶需要人工協助")
             
-            notification_text = f"關鍵字: {title}\n"
+            # Use ai_query as keyword if provided, otherwise use title
+            keyword = ai_query if ai_query else title
+            notification_text = f"聯絡人: {user_nickname}\n"
             notification_text += f"用戶訊息: {user_msg}\n"
-            
-            if ai_reply:
-                notification_text += f"AI回覆: {ai_reply}\n"
+            notification_text += f"關鍵字: {keyword}\n"
             if confidence is not None:
                 notification_text += f"信心度: {confidence:.2f}"
             
@@ -395,5 +396,4 @@ class LineService:
         Returns:
             True if handover is requested
         """
-        handover_keywords = ["轉人工", "人工客服", "真人", "客服"]
-        return any(keyword in message_text.lower() for keyword in handover_keywords)
+        return message_text.strip() == "轉人工"

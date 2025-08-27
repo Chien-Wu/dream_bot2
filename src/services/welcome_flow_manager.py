@@ -134,13 +134,7 @@ class WelcomeFlowManager:
     
     def _is_handover_request(self, message: str) -> bool:
         """Check if message is a handover request."""
-        handover_keywords = [
-            '人工', '客服', '真人', '轉接', '專員', '服務人員',
-            '人工服務', '真人服務', '客服人員', '轉人工'
-        ]
-        
-        message_lower = message.lower()
-        return any(keyword in message_lower for keyword in handover_keywords)
+        return message.strip() == "轉人工"
     
     def _record_to_data(self, record: Dict) -> OrganizationData:
         """Convert database record to OrganizationData."""
