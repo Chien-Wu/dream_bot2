@@ -15,6 +15,7 @@ from linebot.v3.webhook import MessageEvent
 from config import config
 from src.utils import setup_logger, LineAPIError
 from src.models import Message
+from src.services.database_service import DatabaseService
 
 
 logger = setup_logger(__name__)
@@ -28,6 +29,7 @@ class LineService:
         line_config = Configuration(access_token=self.config.channel_access_token)
         self.messaging_api = MessagingApi(ApiClient(line_config))
         self._user_cache = {}  # Cache for user profiles
+        self.db = DatabaseService()
     
     def get_user_nickname(self, user_id: str) -> str:
         """
@@ -309,8 +311,10 @@ class LineService:
             return
             
         try:
-            # Get user nickname
+            # Get user nickname and organization name
             user_nickname = self.get_user_nickname(user_id)
+            org_record = self.db.get_organization_record(user_id)
+            org_name = org_record.get('organization_name', '未設定') if org_record else '未設定'
             
             # Set notification title based on type
             titles = {
@@ -325,7 +329,7 @@ class LineService:
             
             # Use ai_query as keyword if provided, otherwise use title
             keyword = ai_query if ai_query else title
-            notification_text = f"聯絡人: {user_nickname}\n"
+            notification_text = f"聯絡人: {user_nickname}({org_name})\n"
             notification_text += f"用戶訊息: {user_msg}\n"
             notification_text += f"關鍵字: {keyword}\n"
             if confidence is not None:
