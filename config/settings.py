@@ -45,9 +45,20 @@ class OpenAIConfig:
     poll_interval: float = float(os.getenv('OPENAI_POLL_INTERVAL', '2.0'))
     confidence_threshold: float = float(os.getenv('AI_CONFIDENCE_THRESHOLD', '0.83'))
     
+    # Responses API configuration
+    use_responses_api: bool = os.getenv('USE_RESPONSES_API', 'false').lower() == 'true'
+    model: str = os.getenv('OPENAI_MODEL', 'gpt-4')
+    max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '1000'))
+    temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
+    conversation_history_limit: int = int(os.getenv('CONVERSATION_HISTORY_LIMIT', '10'))
+    vector_store_id: Optional[str] = os.getenv('OPENAI_VECTOR_STORE_ID')
+    
     def __post_init__(self):
-        if not self.api_key or not self.assistant_id:
-            raise ValueError("OPENAI_API_KEY and OPENAI_ASSISTANT_ID must be set")
+        if not self.api_key:
+            raise ValueError("OPENAI_API_KEY must be set")
+        
+        if not self.use_responses_api and not self.assistant_id:
+            raise ValueError("OPENAI_ASSISTANT_ID must be set when using Assistant API")
 
 
 @dataclass

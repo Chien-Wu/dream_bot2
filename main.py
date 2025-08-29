@@ -7,7 +7,7 @@ from flask import Flask
 from config import config
 from src.utils import setup_logger
 from src.core import container, MessageProcessor
-from src.services import DatabaseService, OpenAIService, LineService
+from src.services import DatabaseService, OpenAIService, AgentsAPIService, LineService
 from src.services.organization_analyzer import OrganizationDataAnalyzer
 from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.services.admin_command_service import AdminCommandService
@@ -57,6 +57,7 @@ def setup_dependencies():
     container.register_singleton(DatabaseService)
     container.register_singleton(LineService)
     container.register_singleton(OpenAIService)
+    container.register_singleton(AgentsAPIService)
     container.register_singleton(OrganizationDataAnalyzer)
     container.register_singleton(WelcomeFlowManager)
     container.register_singleton(AdminCommandService)
