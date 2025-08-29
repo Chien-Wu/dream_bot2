@@ -2,7 +2,7 @@
 Database service for managing database connections and operations.
 """
 import pymysql
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any
 from contextlib import contextmanager
 
 from config import config
@@ -171,29 +171,6 @@ class DatabaseService:
                     logger.info("ai_detail table created successfully")
                 else:
                     logger.info("ai_detail table already exists")
-                
-                # Create conversation_history table if it doesn't exist
-                cursor.execute("SHOW TABLES LIKE 'conversation_history'")
-                table_exists = cursor.fetchone()
-                
-                if not table_exists:
-                    logger.info("Creating conversation_history table...")
-                    create_conversation_sql = """
-                        CREATE TABLE conversation_history (
-                            id INT PRIMARY KEY AUTO_INCREMENT,
-                            user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                            role ENUM('user', 'assistant') NOT NULL,
-                            content TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_user_id (user_id),
-                            INDEX idx_user_created (user_id, created_at),
-                            INDEX idx_created_at (created_at)
-                        )
-                    """
-                    cursor.execute(create_conversation_sql)
-                    logger.info("conversation_history table created successfully")
-                else:
-                    logger.info("conversation_history table already exists")
                 
                 conn.commit()
                 
@@ -435,71 +412,3 @@ class DatabaseService:
             logger.error(f"Failed to reset organization record for user {user_id}: {e}")
             raise DatabaseError(f"Failed to reset organization record: {e}")
     
-    def store_conversation_message(self, user_id: str, role: str, content: str) -> None:
-        """Store a conversation message."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    INSERT INTO conversation_history (user_id, role, content) 
-                    VALUES (%s, %s, %s)
-                """, (user_id, role, content))
-                conn.commit()
-                
-        except Exception as e:
-            logger.error(f"Failed to store conversation message for user {user_id}: {e}")
-            raise DatabaseError(f"Failed to store conversation message: {e}")
-    
-    def get_conversation_history(self, user_id: str, limit: int = 10) -> List[Dict[str, any]]:
-        """Get recent conversation history for user."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor(pymysql.cursors.DictCursor)
-                cursor.execute("""
-                    SELECT role, content, created_at 
-                    FROM conversation_history 
-                    WHERE user_id = %s 
-                    ORDER BY created_at DESC 
-                    LIMIT %s
-                """, (user_id, limit * 2))  # *2 to get user+assistant pairs
-                
-                results = cursor.fetchall()
-                # Reverse to get chronological order
-                return list(reversed(results)) if results else []
-                
-        except Exception as e:
-            logger.error(f"Failed to get conversation history for user {user_id}: {e}")
-            raise DatabaseError(f"Failed to retrieve conversation history: {e}")
-    
-    def clear_conversation_history(self, user_id: str, keep_last_n: int = 0) -> None:
-        """Clear conversation history for user, optionally keeping last N messages."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                
-                if keep_last_n > 0:
-                    # Keep last N messages, delete older ones
-                    cursor.execute("""
-                        DELETE FROM conversation_history 
-                        WHERE user_id = %s 
-                        AND id NOT IN (
-                            SELECT id FROM (
-                                SELECT id FROM conversation_history 
-                                WHERE user_id = %s 
-                                ORDER BY created_at DESC 
-                                LIMIT %s
-                            ) as recent
-                        )
-                    """, (user_id, user_id, keep_last_n))
-                else:
-                    # Clear all history
-                    cursor.execute("""
-                        DELETE FROM conversation_history 
-                        WHERE user_id = %s
-                    """, (user_id,))
-                
-                conn.commit()
-                
-        except Exception as e:
-            logger.error(f"Failed to clear conversation history for user {user_id}: {e}")
-            raise DatabaseError(f"Failed to clear conversation history: {e}")

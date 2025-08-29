@@ -103,7 +103,6 @@ class AgentsAPIService:
             parsed = self._parse_json_response(response_text, user_id)
 
             # 5) 落庫（沿用你的流程）
-            self._store_conversation_turn(user_id, user_input, parsed.text)
             message_history_id = self.db.log_message(
                 user_id=user_id,
                 content=user_input,
@@ -213,13 +212,6 @@ class AgentsAPIService:
             logger.error(f"Failed to get user context for {user_id}: {e}")
             return ""
 
-    def _store_conversation_turn(self, user_id: str, user_message: str, ai_response: str) -> None:
-        try:
-            self.db.store_conversation_message(user_id, "user", user_message)
-            self.db.store_conversation_message(user_id, "assistant", ai_response)
-        except Exception as e:
-            logger.error(f"Error storing conversation for {user_id}: {e}")
-    
     def _refresh_user_context(self, user_id: str, thread_id: str) -> None:
         """
         Refresh user context in existing session.
