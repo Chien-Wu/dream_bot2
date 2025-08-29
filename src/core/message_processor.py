@@ -8,7 +8,7 @@ from typing import Optional
 from config import config
 from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
-from src.services import DatabaseService, OpenAIService, AgentsAPIService, LineService
+from src.services import DatabaseService, AgentsAPIService, LineService
 from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.services.admin_command_service import AdminCommandService
 from src.core.message_buffer import message_buffer
@@ -22,26 +22,19 @@ class MessageProcessor:
     
     def __init__(self, 
                  database_service: DatabaseService,
-                 openai_service: OpenAIService,
                  agents_api_service: AgentsAPIService,
                  line_service: LineService,
                  welcome_flow_manager: WelcomeFlowManager,
                  admin_command_service: AdminCommandService):
         self.db = database_service
-        self.openai_service = openai_service
         self.agents_api_service = agents_api_service
         self.line = line_service
         self.welcome_flow = welcome_flow_manager
         self.admin_commands = admin_command_service
         
-        # Choose AI service based on configuration
-        # USE_RESPONSES_API=true now switches to AgentsAPIService
-        if config.openai.use_responses_api:
-            self.ai = agents_api_service
-            logger.info("Using Agents API service")
-        else:
-            self.ai = openai_service
-            logger.info("Using Assistant API service")
+        # Use Agents API service exclusively
+        self.ai = agents_api_service
+        logger.info("Using Agents API service")
         
         # Debug: Verify admin command service is properly initialized
         logger.info(f"MessageProcessor initialized with AdminCommandService: {id(self.admin_commands)}")
