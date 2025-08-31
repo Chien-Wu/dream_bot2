@@ -61,6 +61,13 @@ class MessageBufferConfig:
     min_length: int = int(os.getenv('MESSAGE_BUFFER_MIN_LENGTH', '50'))
 
 
+@dataclass
+class HandoverConfig:
+    """User handover configuration settings."""
+    timeout_hours: int = int(os.getenv('HANDOVER_TIMEOUT_HOURS', '1'))
+    cleanup_interval_minutes: int = int(os.getenv('HANDOVER_CLEANUP_INTERVAL_MINUTES', '15'))
+
+
 
 @dataclass
 class AppConfig:
@@ -79,12 +86,14 @@ class AppConfig:
     line: LineConfig = None
     openai: OpenAIConfig = None
     message_buffer: MessageBufferConfig = None
+    handover: HandoverConfig = None
     
     def __post_init__(self):
         self.database = DatabaseConfig()
         self.line = LineConfig()
         self.openai = OpenAIConfig()
         self.message_buffer = MessageBufferConfig()
+        self.handover = HandoverConfig()
 
 
 # Global configuration instance

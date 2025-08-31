@@ -172,6 +172,21 @@ class DatabaseService:
                 else:
                     logger.info("ai_detail table already exists")
                 
+                # Add handover flag column if it doesn't exist (for existing installations)
+                cursor.execute("SHOW COLUMNS FROM organization_data LIKE 'handover_flag_expires_at'")
+                handover_column_exists = cursor.fetchone()
+                
+                if not handover_column_exists:
+                    logger.info("Adding handover_flag_expires_at column to organization_data table...")
+                    cursor.execute("""
+                        ALTER TABLE organization_data 
+                        ADD COLUMN handover_flag_expires_at TIMESTAMP NULL,
+                        ADD INDEX idx_handover_expires (handover_flag_expires_at)
+                    """)
+                    logger.info("handover_flag_expires_at column added successfully")
+                else:
+                    logger.info("handover_flag_expires_at column already exists")
+                
                 conn.commit()
                 
                 logger.info("Database tables initialized successfully")

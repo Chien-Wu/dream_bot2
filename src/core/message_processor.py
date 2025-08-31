@@ -11,6 +11,7 @@ from src.models import Message, AIResponse
 from src.services import DatabaseService, AgentsAPIService, LineService
 from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.services.admin_command_service import AdminCommandService
+from src.services.user_handover_service import UserHandoverService
 from src.core.message_buffer import message_buffer
 
 
@@ -25,12 +26,14 @@ class MessageProcessor:
                  agents_api_service: AgentsAPIService,
                  line_service: LineService,
                  welcome_flow_manager: WelcomeFlowManager,
-                 admin_command_service: AdminCommandService):
+                 admin_command_service: AdminCommandService,
+                 user_handover_service: UserHandoverService):
         self.db = database_service
         self.agents_api_service = agents_api_service
         self.line = line_service
         self.welcome_flow = welcome_flow_manager
         self.admin_commands = admin_command_service
+        self.handover_service = user_handover_service
         
         # Use Agents API service exclusively
         self.ai = agents_api_service
@@ -76,6 +79,20 @@ class MessageProcessor:
             message: Message to process
         """
         try:
+            # Check handover flag first - block AI if user is in handover mode
+            if self.handover_service.is_in_handover(message.user_id):
+                # Reset handover flag timer - extends expiry by another hour from now
+                self.handover_service.set_handover_flag(message.user_id)
+                
+                log_user_action(
+                    logger, 
+                    message.user_id, 
+                    "handover_blocked_activity_reset",
+                    message_type=message.message_type,
+                    content_length=len(message.content)
+                )
+                return  # Silent block - no messages sent
+            
             log_user_action(
                 logger, 
                 message.user_id, 
@@ -250,6 +267,9 @@ class MessageProcessor:
             return False
             
         try:
+            # Set handover flag first
+            self.handover_service.set_handover_flag(message.user_id)
+            
             self.line.notify_admin(
                 user_id=message.user_id,
                 user_msg=message.content,
@@ -276,6 +296,9 @@ class MessageProcessor:
             
             # Send normal response first
             if ai_response.needs_human_review:
+                # Set handover flag for low confidence responses
+                self.handover_service.set_handover_flag(message.user_id)
+                
                 # Notify admin for low confidence responses
                 try:
                     # Extract first query "q" field if available
