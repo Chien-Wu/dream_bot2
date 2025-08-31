@@ -168,10 +168,32 @@ class AgentsAPIService:
     
     def _create_fallback_response(self, response_text: str, user_id: str) -> AIResponse:
         """Create fallback response when JSON parsing fails."""
+        # Try to extract partial data from truncated JSON
+        confidence = 0.5
+        text = response_text
+        explanation = "JSON解析失敗，使用原始回覆"
+        
+        try:
+            # Extract confidence if available in truncated response
+            import re
+            confidence_match = re.search(r'"confidence":\s*([\d.]+)', response_text)
+            if confidence_match:
+                confidence = float(confidence_match.group(1))
+                logger.info(f"Extracted confidence {confidence} from partial JSON")
+            
+            # Extract text if available 
+            text_match = re.search(r'"text":\s*"([^"]*)"', response_text)
+            if text_match:
+                text = text_match.group(1)
+                logger.info("Extracted text from partial JSON")
+                
+        except Exception as e:
+            logger.error(f"Failed to extract partial data from response: {e}")
+        
         return AIResponse(
-            text=response_text,
-            confidence=0.5,
-            explanation="JSON解析失敗，使用原始回覆",
+            text=text,
+            confidence=confidence,
+            explanation=explanation,
             user_id=user_id
         )
 

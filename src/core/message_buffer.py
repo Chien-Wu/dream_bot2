@@ -33,7 +33,6 @@ class UserBuffer:
     last_activity: float
     timer: Optional[threading.Timer]
     sequence_counter: int
-    is_processing: bool
     
     def __init__(self, user_id: str):
         self.user_id = user_id
@@ -41,7 +40,6 @@ class UserBuffer:
         self.last_activity = time.time()
         self.timer = None
         self.sequence_counter = 0
-        self.is_processing = False
 
 
 class MessageBufferManager:
@@ -131,11 +129,6 @@ class MessageBufferManager:
             
             user_buffer = self.user_buffers[user_id]
             
-            # If already processing, don't buffer
-            if user_buffer.is_processing:
-                logger.debug(f"User {user_id} buffer is processing, message not buffered")
-                return False
-            
             # Add message to buffer
             buffered_msg = BufferedMessage(
                 message=message,
@@ -146,29 +139,34 @@ class MessageBufferManager:
             user_buffer.last_activity = time.time()
             user_buffer.sequence_counter += 1
             
-            # Cancel existing timer if any
-            if user_buffer.timer:
-                user_buffer.timer.cancel()
-            
             # Check if buffer is full by count or character limit
             current_combined = self._get_current_buffer_text(user_buffer)
             current_chinese_chars = self._count_chinese_characters(current_combined)
             
             if (len(user_buffer.messages) >= self.config.max_size or 
                 current_chinese_chars >= 1000):
+                # Cancel existing timer since we're processing immediately
+                if user_buffer.timer:
+                    user_buffer.timer.cancel()
+                    user_buffer.timer = None
+                
                 if current_chinese_chars >= 1000:
                     logger.info(f"Buffer reached 1000 Chinese character limit for user {user_id}, processing immediately")
                 else:
                     logger.info(f"Buffer full for user {user_id}, processing immediately")
                 self._process_buffer(user_id)
             else:
-                # Set new timer
-                user_buffer.timer = threading.Timer(
-                    self.config.timeout,
-                    self._process_buffer,
-                    args=[user_id]
-                )
-                user_buffer.timer.start()
+                # Only set timer if one doesn't exist yet
+                if user_buffer.timer is None:
+                    user_buffer.timer = threading.Timer(
+                        self.config.timeout,
+                        self._process_buffer,
+                        args=[user_id]
+                    )
+                    user_buffer.timer.start()
+                    logger.debug(f"Started buffer timer for user {user_id} ({self.config.timeout}s)")
+                else:
+                    logger.debug(f"Timer already running for user {user_id}, message added to buffer")
                 
                 logger.debug(f"Message buffered for user {user_id} "
                            f"({len(user_buffer.messages)}/{self.config.max_size}), "
@@ -194,65 +192,75 @@ class MessageBufferManager:
     
     def _process_buffer(self, user_id: str):
         """
-        Process buffered messages for a user.
+        Process buffered messages for a user using atomic snapshot-and-clear.
         
         Args:
             user_id: User ID to process buffer for
         """
+        # Atomic snapshot and clear - do this under lock
+        messages_to_process = None
+        reply_token = None
+        
         with self.locks[user_id]:
             if user_id not in self.user_buffers:
                 return
             
             user_buffer = self.user_buffers[user_id]
             
-            if not user_buffer.messages or user_buffer.is_processing:
+            if not user_buffer.messages:
                 return
             
-            user_buffer.is_processing = True
+            # ATOMIC: Take snapshot of messages and clear immediately
+            messages_to_process = list(user_buffer.messages)
+            user_buffer.messages.clear()  # Buffer available for new messages immediately
             
-            # Cancel timer if still running
+            # Cancel timer since we're processing now
             if user_buffer.timer:
                 user_buffer.timer.cancel()
                 user_buffer.timer = None
             
-            # Collect all messages
-            messages = list(user_buffer.messages)
-            user_buffer.messages.clear()
+            # Get reply token from last message
+            reply_token = messages_to_process[-1].message.reply_token if messages_to_process else None
+        
+        # Process messages OUTSIDE the lock - don't block new message collection
+        if messages_to_process:
+            self._process_messages_in_background(user_id, messages_to_process, reply_token)
+    
+    def _process_messages_in_background(self, user_id: str, messages: List[BufferedMessage], reply_token: str):
+        """
+        Process messages in background without blocking buffer collection.
+        
+        Args:
+            user_id: User ID
+            messages: Messages to process
+            reply_token: Reply token for response
+        """
+        logger.info(f"Processing buffer for user {user_id} with {len(messages)} messages")
+        
+        try:
+            # Combine messages into single context
+            combined_content = self._combine_messages(messages)
             
-            logger.info(f"Processing buffer for user {user_id} with {len(messages)} messages")
+            # Process combined message
+            if self.process_callback and combined_content:
+                self.process_callback(user_id, combined_content, reply_token)
             
-            try:
-                # Combine messages into single context
-                combined_content = self._combine_messages(messages)
-                
-                # Use the last message's reply token (most recent)
-                reply_token = messages[-1].message.reply_token if messages else None
-                
-                # No acknowledgment needed - just process silently
-                
-                # Process combined message
-                if self.process_callback and combined_content:
-                    self.process_callback(user_id, combined_content, reply_token)
-                
-                logger.info(f"Successfully processed buffer for user {user_id}")
-                
-            except Exception as e:
-                logger.error(f"Error processing buffer for user {user_id}: {e}")
-                
-                # Try to process individual messages as fallback
-                if self.process_callback:
-                    for buffered_msg in messages:
-                        try:
-                            self.process_callback(
-                                user_id,
-                                buffered_msg.message.content,
-                                buffered_msg.message.reply_token
-                            )
-                        except Exception as fallback_error:
-                            logger.error(f"Fallback processing failed: {fallback_error}")
+            logger.info(f"Successfully processed buffer for user {user_id}")
             
-            finally:
-                user_buffer.is_processing = False
+        except Exception as e:
+            logger.error(f"Error processing buffer for user {user_id}: {e}")
+            
+            # Try to process individual messages as fallback
+            if self.process_callback:
+                for buffered_msg in messages:
+                    try:
+                        self.process_callback(
+                            user_id,
+                            buffered_msg.message.content,
+                            buffered_msg.message.reply_token
+                        )
+                    except Exception as fallback_error:
+                        logger.error(f"Fallback processing failed: {fallback_error}")
     
     def _count_chinese_characters(self, text: str) -> int:
         """
@@ -361,7 +369,6 @@ class MessageBufferManager:
                 return {
                     'exists': False,
                     'message_count': 0,
-                    'is_processing': False,
                     'time_since_last': None
                 }
             
@@ -371,7 +378,6 @@ class MessageBufferManager:
             return {
                 'exists': True,
                 'message_count': len(user_buffer.messages),
-                'is_processing': user_buffer.is_processing,
                 'time_since_last': time_since_last,
                 'has_timer': user_buffer.timer is not None
             }
@@ -391,7 +397,6 @@ class MessageBufferManager:
                     user_buffer.timer.cancel()
                 
                 user_buffer.messages.clear()
-                user_buffer.is_processing = False
                 
                 logger.info(f"Cleared buffer for user {user_id}")
     
@@ -399,12 +404,10 @@ class MessageBufferManager:
         """Get overall buffer statistics."""
         total_buffers = len(self.user_buffers)
         total_messages = sum(len(buf.messages) for buf in self.user_buffers.values())
-        processing_buffers = sum(1 for buf in self.user_buffers.values() if buf.is_processing)
         
         return {
             'total_buffers': total_buffers,
             'total_buffered_messages': total_messages,
-            'processing_buffers': processing_buffers,
             'config': {
                 'timeout': self.config.timeout,
                 'max_size': self.config.max_size,

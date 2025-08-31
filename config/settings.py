@@ -44,7 +44,7 @@ class OpenAIConfig:
     
     # Agents API configuration
     model: str = os.getenv('OPENAI_MODEL', 'gpt-4')
-    max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '1000'))
+    max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '2048'))
     temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
     vector_store_id: Optional[str] = os.getenv('OPENAI_VECTOR_STORE_ID')
     
