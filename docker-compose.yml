@@ -5,19 +5,34 @@ services:
     build: .
     ports:
       - "5000:5000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
     environment:
       - ENVIRONMENT=production
       - HOST=0.0.0.0
       - PORT=5000
       - MYSQL_HOST=mysql
-      - MYSQL_USER=dream_bot
+      - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-      - MYSQL_DATABASE=dream_bot_db
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
       - LINE_CHANNEL_ACCESS_TOKEN=${LINE_CHANNEL_ACCESS_TOKEN}
       - LINE_CHANNEL_SECRET=${LINE_CHANNEL_SECRET}
       - LINE_ADMIN_USER_ID=${LINE_ADMIN_USER_ID}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_ASSISTANT_ID=${OPENAI_ASSISTANT_ID}
+      - OPENAI_MODEL=${OPENAI_MODEL}
+      - OPENAI_MAX_TOKENS=${OPENAI_MAX_TOKENS}
+      - OPENAI_TEMPERATURE=${OPENAI_TEMPERATURE}
+      - OPENAI_VECTOR_STORE_ID=${OPENAI_VECTOR_STORE_ID}
+      - AI_CONFIDENCE_THRESHOLD=${AI_CONFIDENCE_THRESHOLD}
+      - SHOW_AI_DEBUG_INFO=${SHOW_AI_DEBUG_INFO}
+      - MESSAGE_BUFFER_TIMEOUT=${MESSAGE_BUFFER_TIMEOUT}
+      - MESSAGE_BUFFER_MAX_SIZE=${MESSAGE_BUFFER_MAX_SIZE}
+      - MESSAGE_BUFFER_MAX_CHINESE_CHARS=${MESSAGE_BUFFER_MAX_CHINESE_CHARS}
+      - HANDOVER_TIMEOUT_HOURS=${HANDOVER_TIMEOUT_HOURS}
+      - HANDOVER_CLEANUP_INTERVAL_MINUTES=${HANDOVER_CLEANUP_INTERVAL_MINUTES}
       - LOG_LEVEL=INFO
     depends_on:
       mysql:
@@ -30,13 +45,16 @@ services:
 
   mysql:
     image: mysql:8.0
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
     environment:
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=dream_bot_db
-      - MYSQL_USER=dream_bot
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
       - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-    ports:
-      - "3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

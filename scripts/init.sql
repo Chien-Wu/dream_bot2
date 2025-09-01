@@ -51,5 +51,20 @@ CREATE TABLE IF NOT EXISTS ai_detail (
     FOREIGN KEY (message_history_id) REFERENCES message_history(id) ON DELETE CASCADE
 );
 
+-- Organization data table
+CREATE TABLE IF NOT EXISTS organization_data (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+    organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    completion_status ENUM('incomplete', 'complete') DEFAULT 'incomplete',
+    handover_flag_expires_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_user_id (user_id),
+    INDEX idx_user_id (user_id),
+    INDEX idx_completion_status (completion_status),
+    INDEX idx_handover_flag_expires_at (handover_flag_expires_at)
+);
+
 -- Note: ai_explanation column is already included in the CREATE TABLE statement above
 -- For existing installations, the column addition is handled programmatically in the DatabaseService
