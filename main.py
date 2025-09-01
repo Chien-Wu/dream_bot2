@@ -58,14 +58,14 @@ def create_app() -> Flask:
 def setup_dependencies():
     """Configure dependency injection container."""
     
-    # Register services as singletons
+    # Register services as singletons (order matters for dependencies)
     container.register_singleton(DatabaseService)
+    container.register_singleton(UserHandoverService)  # Must be before LineService
     container.register_singleton(LineService)
     container.register_singleton(AgentsAPIService)
     container.register_singleton(OrganizationDataAnalyzer)
     container.register_singleton(WelcomeFlowManager)
     container.register_singleton(AdminCommandService)
-    container.register_singleton(UserHandoverService)
     container.register_singleton(MessageProcessor)
 
 

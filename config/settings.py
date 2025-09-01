@@ -58,7 +58,7 @@ class MessageBufferConfig:
     """Message buffering configuration settings."""
     timeout: float = float(os.getenv('MESSAGE_BUFFER_TIMEOUT', '10.0'))
     max_size: int = int(os.getenv('MESSAGE_BUFFER_MAX_SIZE', '10'))
-    min_length: int = int(os.getenv('MESSAGE_BUFFER_MIN_LENGTH', '50'))
+    max_chinese_chars: int = int(os.getenv('MESSAGE_BUFFER_MAX_CHINESE_CHARS', '1000'))
 
 
 @dataclass

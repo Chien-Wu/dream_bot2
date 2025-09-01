@@ -11,6 +11,7 @@ from .exceptions import (
     RateLimitError,
     TimeoutError
 )
+from .text_utils import count_chinese_characters
 
 __all__ = [
     'setup_logger',
@@ -24,5 +25,6 @@ __all__ = [
     'MessageProcessingError',
     'ValidationError',
     'RateLimitError',
-    'TimeoutError'
+    'TimeoutError',
+    'count_chinese_characters'
 ]

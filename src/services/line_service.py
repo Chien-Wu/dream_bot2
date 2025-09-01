@@ -1,9 +1,12 @@
 """
 LINE messaging service for handling LINE Bot interactions.
 """
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 import time
 import re
+
+if TYPE_CHECKING:
+    from src.services.user_handover_service import UserHandoverService
 
 from linebot.v3.messaging import (
     MessagingApi, Configuration, ApiClient, 
@@ -24,12 +27,33 @@ logger = setup_logger(__name__)
 class LineService:
     """Service for LINE messaging operations."""
     
-    def __init__(self):
+    def __init__(self, user_handover_service: Optional['UserHandoverService'] = None):
         self.config = config.line
         line_config = Configuration(access_token=self.config.channel_access_token)
         self.messaging_api = MessagingApi(ApiClient(line_config))
         self._user_cache = {}  # Cache for user profiles
         self.db = DatabaseService()
+        self.handover_service = user_handover_service
+    
+    def _is_user_in_handover(self, user_id: str) -> bool:
+        """
+        Check if user is currently in handover mode.
+        
+        Args:
+            user_id: User's LINE ID
+            
+        Returns:
+            True if user is in handover mode and messages should be blocked
+        """
+        if not self.handover_service:
+            return False
+        
+        try:
+            return self.handover_service.is_in_handover(user_id)
+        except Exception as e:
+            logger.error(f"Failed to check handover status for user {user_id}: {e}")
+            # Fail-safe: don't block messages if service fails
+            return False
     
     def get_user_nickname(self, user_id: str) -> str:
         """
@@ -149,6 +173,11 @@ class LineService:
             text: Message text to send
             reply_token: Optional reply token (will fallback to push if invalid)
         """
+        # Check if user is in handover mode - block outgoing messages
+        if self._is_user_in_handover(user_id):
+            logger.info(f"Blocked outgoing message to user {user_id} - in handover mode")
+            return
+        
         try:
             # Process text
             processed_text = self._process_text(text)
@@ -213,6 +242,11 @@ class LineService:
             user_id: LINE user ID
             text: Message text to send
         """
+        # Check if user is in handover mode - block outgoing messages
+        if self._is_user_in_handover(user_id):
+            logger.info(f"Blocked outgoing push message to user {user_id} - in handover mode")
+            return
+        
         try:
             self.messaging_api.push_message(
                 PushMessageRequest(

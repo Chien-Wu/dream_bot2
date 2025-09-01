@@ -110,9 +110,22 @@ class MessageProcessor:
                 self._handle_ai_response
             ]
             
-            for handler in handlers:
-                if handler(message):
-                    break
+            for i, handler in enumerate(handlers):
+                try:
+                    handler_name = handler.__name__
+                    logger.debug(f"Running handler {i+1}/5: {handler_name} for user {message.user_id}")
+                    if handler(message):
+                        logger.info(f"Message handled by {handler_name} for user {message.user_id}")
+                        break
+                    else:
+                        logger.debug(f"Handler {handler_name} passed on message for user {message.user_id}")
+                except Exception as handler_error:
+                    logger.error(f"Handler {handler.__name__} failed for user {message.user_id}: {handler_error}")
+                    # Continue to next handler instead of breaking the chain
+                    continue
+            else:
+                # This happens if no handler processed the message
+                logger.warning(f"No handler processed message for user {message.user_id}: '{message.content[:50]}...'")
                     
         except Exception as e:
             logger.error(f"Failed to process message from {message.user_id}: {e}")
@@ -291,11 +304,17 @@ class MessageProcessor:
     def _handle_ai_response(self, message: Message) -> bool:
         """Handle AI response generation and sending."""
         try:
+            logger.debug(f"Getting AI response for user {message.user_id}")
+            
             # Get AI response
             ai_response = self.ai.get_response(message.user_id, message.content)
             
+            logger.debug(f"AI response received for user {message.user_id}: confidence={ai_response.confidence:.2f}, needs_review={ai_response.needs_human_review}")
+            
             # Send normal response first
             if ai_response.needs_human_review:
+                logger.info(f"Low confidence AI response for user {message.user_id}, setting handover flag")
+                
                 # Set handover flag for low confidence responses
                 self.handover_service.set_handover_flag(message.user_id)
                 
@@ -321,9 +340,11 @@ class MessageProcessor:
                 
                 # Low confidence - send handover message
                 handover_message = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
+                logger.debug(f"Sending handover message to user {message.user_id}")
                 self.line.send_message(message.user_id, handover_message, message.reply_token)
             else:
                 # High confidence - send AI response
+                logger.debug(f"Sending high confidence AI response to user {message.user_id}")
                 self.line.send_message(message.user_id, ai_response.text, message.reply_token)
             
             # Push debug info separately if enabled
@@ -348,7 +369,9 @@ class MessageProcessor:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to get AI response: {e}")
+            logger.error(f"Failed to get AI response for user {message.user_id}: {e}")
+            import traceback
+            logger.error(f"AI response error traceback: {traceback.format_exc()}")
             self._send_error_response(message.user_id, message.reply_token)
             return True
     

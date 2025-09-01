@@ -7,10 +7,9 @@ import threading
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Callable, Deque
-from datetime import datetime
 
 from config import config
-from src.utils import setup_logger
+from src.utils import setup_logger, count_chinese_characters
 from src.models import Message
 
 
@@ -59,8 +58,7 @@ class MessageBufferManager:
         self.locks: Dict[str, threading.Lock] = defaultdict(threading.Lock)
         self.process_callback: Optional[Callable] = None
         
-        logger.info(f"Message buffer initialized - timeout: {self.config.timeout}s, "
-                   f"max_size: {self.config.max_size}, min_length: {self.config.min_length}")
+        logger.info(f"Message buffer initialized - timeout: {self.config.timeout}s, max_size: {self.config.max_size}")
     
     def set_process_callback(self, callback: Callable[[str, str, str], None]):
         """
@@ -71,9 +69,45 @@ class MessageBufferManager:
         """
         self.process_callback = callback
     
+    
+    def _cancel_timer(self, user_buffer: UserBuffer):
+        """Cancel timer for user buffer."""
+        if user_buffer.timer:
+            user_buffer.timer.cancel()
+            user_buffer.timer = None
+    
+    def _clear_user_buffer_internal(self, user_buffer: UserBuffer):
+        """Clear user buffer messages and timer."""
+        user_buffer.messages.clear()
+        self._cancel_timer(user_buffer)
+    
+    def _ensure_user_buffer_exists(self, user_id: str):
+        """Ensure user buffer exists."""
+        if user_id not in self.user_buffers:
+            self.user_buffers[user_id] = UserBuffer(user_id)
+            logger.debug(f"Created new buffer for user {user_id}")
+    
+    def _update_last_activity(self, user_id: str):
+        """Update last activity timestamp for user."""
+        current_time = time.time()
+        if user_id in self.user_buffers:
+            self.user_buffers[user_id].last_activity = current_time
+        return current_time
+    
+    def _would_exceed_char_limit(self, user_buffer: UserBuffer, new_content: str) -> bool:
+        """Check if adding new content would exceed Chinese character limit."""
+        if not user_buffer.messages:
+            return False
+        
+        current_combined = self._combine_messages(user_buffer.messages)
+        current_chars = count_chinese_characters(current_combined)
+        new_chars = count_chinese_characters(new_content)
+        
+        return current_chars + new_chars > self.config.max_chinese_chars
+
     def should_buffer_message(self, message: Message) -> bool:
         """
-        Determine if a message should be buffered based on content and user pattern.
+        Determine if a message should be buffered. Buffer everything, with character limit checks.
         
         Args:
             message: Incoming message
@@ -81,27 +115,19 @@ class MessageBufferManager:
         Returns:
             True if message should be buffered
         """
-        # Don't buffer handover requests
-        if any(keyword in message.content.lower() for keyword in ["轉人工", "人工客服", "真人", "客服"]):
-            return False
-        
-        # Don't buffer long messages (they're likely complete thoughts)
-        if len(message.content) >= self.config.min_length:
-            return False
-        
-        # Don't buffer if user has no recent activity (first message)
         user_id = message.user_id
-        if user_id not in self.user_buffers:
-            return True  # Start buffering for new users with short messages
+        content = message.content
         
-        # Buffer if user has been active recently
+        # Ensure user buffer exists
+        self._ensure_user_buffer_exists(user_id)
+        
+        # Check if adding this message would exceed Chinese character limit
         user_buffer = self.user_buffers[user_id]
-        time_since_last = time.time() - user_buffer.last_activity
+        if self._would_exceed_char_limit(user_buffer, content):
+            logger.info(f"Message would exceed {self.config.max_chinese_chars} Chinese character limit for user {user_id}, processing current buffer first")
+            return False  # Process current buffer first, then this message will start new buffer
         
-        # If it's been too long, don't buffer (treat as new conversation)
-        if time_since_last > self.config.timeout * 2:
-            return False
-            
+        logger.info(f"Message will be buffered for user {user_id}: '{content[:50]}...' (length: {len(content)})")
         return True
     
     def add_message(self, message: Message) -> bool:
@@ -119,41 +145,27 @@ class MessageBufferManager:
         with self.locks[user_id]:
             # Check if message should be buffered
             if not self.should_buffer_message(message):
-                logger.debug(f"Message not buffered for user {user_id}: too long or special")
+                logger.debug(f"Message not buffered for user {user_id}")
                 return False
             
-            # Initialize user buffer if needed
-            if user_id not in self.user_buffers:
-                self.user_buffers[user_id] = UserBuffer(user_id)
-                logger.debug(f"Created new buffer for user {user_id}")
+            user_buffer = self.user_buffers[user_id]  # Buffer exists from should_buffer_message
             
-            user_buffer = self.user_buffers[user_id]
-            
-            # Add message to buffer
+            # Add message to buffer and update activity
+            current_time = self._update_last_activity(user_id)
             buffered_msg = BufferedMessage(
                 message=message,
-                timestamp=time.time(),
+                timestamp=current_time,
                 sequence=user_buffer.sequence_counter
             )
             user_buffer.messages.append(buffered_msg)
-            user_buffer.last_activity = time.time()
             user_buffer.sequence_counter += 1
             
-            # Check if buffer is full by count or character limit
-            current_combined = self._get_current_buffer_text(user_buffer)
-            current_chinese_chars = self._count_chinese_characters(current_combined)
-            
-            if (len(user_buffer.messages) >= self.config.max_size or 
-                current_chinese_chars >= 1000):
+            # Check if buffer is full by message count
+            if len(user_buffer.messages) >= self.config.max_size:
                 # Cancel existing timer since we're processing immediately
-                if user_buffer.timer:
-                    user_buffer.timer.cancel()
-                    user_buffer.timer = None
+                self._cancel_timer(user_buffer)
                 
-                if current_chinese_chars >= 1000:
-                    logger.info(f"Buffer reached 1000 Chinese character limit for user {user_id}, processing immediately")
-                else:
-                    logger.info(f"Buffer full for user {user_id}, processing immediately")
+                logger.info(f"Buffer full (message count) for user {user_id}, processing immediately")
                 self._process_buffer(user_id)
             else:
                 # Only set timer if one doesn't exist yet
@@ -164,13 +176,9 @@ class MessageBufferManager:
                         args=[user_id]
                     )
                     user_buffer.timer.start()
-                    logger.debug(f"Started buffer timer for user {user_id} ({self.config.timeout}s)")
-                else:
-                    logger.debug(f"Timer already running for user {user_id}, message added to buffer")
+                    logger.debug(f"Started buffer timer for user {user_id}")
                 
-                logger.debug(f"Message buffered for user {user_id} "
-                           f"({len(user_buffer.messages)}/{self.config.max_size}), "
-                           f"timeout: {self.config.timeout}s")
+                logger.debug(f"Message buffered for user {user_id} ({len(user_buffer.messages)}/{self.config.max_size})")
             
             return True
     
@@ -197,7 +205,7 @@ class MessageBufferManager:
         Args:
             user_id: User ID to process buffer for
         """
-        # Atomic snapshot and clear - do this under lock
+        # Atomic snapshot and delete - do this under lock
         messages_to_process = None
         reply_token = None
         
@@ -210,14 +218,12 @@ class MessageBufferManager:
             if not user_buffer.messages:
                 return
             
-            # ATOMIC: Take snapshot of messages and clear immediately
+            # ATOMIC: Take snapshot of messages and delete entire user buffer
             messages_to_process = list(user_buffer.messages)
-            user_buffer.messages.clear()  # Buffer available for new messages immediately
+            self._cancel_timer(user_buffer)
             
-            # Cancel timer since we're processing now
-            if user_buffer.timer:
-                user_buffer.timer.cancel()
-                user_buffer.timer = None
+            # Delete entire user buffer (not just clear) - fresh start for next messages
+            del self.user_buffers[user_id]
             
             # Get reply token from last message
             reply_token = messages_to_process[-1].message.reply_token if messages_to_process else None
@@ -262,94 +268,31 @@ class MessageBufferManager:
                     except Exception as fallback_error:
                         logger.error(f"Fallback processing failed: {fallback_error}")
     
-    def _count_chinese_characters(self, text: str) -> int:
-        """
-        Count Chinese characters in text.
-        
-        Args:
-            text: Text to count characters
-            
-        Returns:
-            Number of Chinese characters
-        """
-        import re
-        # Count Chinese characters (CJK Unified Ideographs and Extensions)
-        chinese_chars = re.findall(r'[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]', text)
-        return len(chinese_chars)
-    
-    def _get_current_buffer_text(self, user_buffer: UserBuffer) -> str:
-        """
-        Get current buffer content as combined text for character counting.
-        
-        Args:
-            user_buffer: User buffer to get text from
-            
-        Returns:
-            Combined text of current buffer messages
-        """
-        if not user_buffer.messages:
-            return ""
-        
-        # Create BufferedMessage list from current buffer
-        messages = list(user_buffer.messages)
-        
-        # Sort by sequence to maintain order
-        sorted_messages = sorted(messages, key=lambda x: x.sequence)
-        
-        # Simply join all messages with spaces (no character limit check here)
-        combined_parts = []
-        for buffered_msg in sorted_messages:
-            content = buffered_msg.message.content.strip()
-            if content:
-                combined_parts.append(content)
-        
-        return " ".join(combined_parts)
     
     def _combine_messages(self, messages: List[BufferedMessage]) -> str:
         """
-        Combine multiple messages into a single string, respecting 1000 Chinese character limit.
+        Combine multiple messages into a single string.
         
         Args:
             messages: List of buffered messages
             
         Returns:
-            Combined message content as a single string (max 1000 Chinese characters)
+            Combined message content as a single string
         """
         if not messages:
             return ""
         
-        if len(messages) == 1:
-            content = messages[0].message.content
-            # Check if single message exceeds limit
-            if self._count_chinese_characters(content) > 1000:
-                logger.warning(f"Single message exceeds 1000 Chinese character limit")
-            return content
-        
-        # Sort by sequence to maintain order
-        sorted_messages = sorted(messages, key=lambda x: x.sequence)
-        
-        # Combine messages while respecting character limit
+        # Messages are added sequentially, no need to sort
         combined_parts = []
-        total_chinese_chars = 0
-        
-        for buffered_msg in sorted_messages:
+        for buffered_msg in messages:
             content = buffered_msg.message.content.strip()
             if content:
-                content_chinese_chars = self._count_chinese_characters(content)
-                
-                # Check if adding this message would exceed limit
-                if total_chinese_chars + content_chinese_chars <= 1000:
-                    combined_parts.append(content)
-                    total_chinese_chars += content_chinese_chars
-                else:
-                    # Stop adding messages if limit would be exceeded
-                    logger.info(f"Stopped combining messages at {total_chinese_chars} Chinese characters to respect 1000 limit")
-                    break
+                combined_parts.append(content)
         
         # Join with spaces to create one natural sentence
         result = " ".join(combined_parts)
         
-        logger.debug(f"Combined {len(combined_parts)} messages into: {result[:100]}... ({total_chinese_chars} Chinese chars)")
+        logger.debug(f"Combined {len(combined_parts)} messages into: {result[:100]}...")
         
         return result
     
@@ -391,13 +334,7 @@ class MessageBufferManager:
         """
         with self.locks[user_id]:
             if user_id in self.user_buffers:
-                user_buffer = self.user_buffers[user_id]
-                
-                if user_buffer.timer:
-                    user_buffer.timer.cancel()
-                
-                user_buffer.messages.clear()
-                
+                self._clear_user_buffer_internal(self.user_buffers[user_id])
                 logger.info(f"Cleared buffer for user {user_id}")
     
     def get_stats(self) -> dict:
