@@ -53,16 +53,18 @@ CREATE TABLE IF NOT EXISTS ai_detail (
 
 -- Organization data table
 CREATE TABLE IF NOT EXISTS organization_data (
-    id INT PRIMARY KEY AUTO_INCREMENT,
-    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    completion_status ENUM('incomplete', 'complete') DEFAULT 'incomplete',
+    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+    completion_status ENUM('pending', 'partial', 'complete') DEFAULT 'pending',
+    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     handover_flag_expires_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_user_id (user_id),
-    INDEX idx_user_id (user_id),
     INDEX idx_completion_status (completion_status),
+    INDEX idx_created_at (created_at),
     INDEX idx_handover_flag_expires_at (handover_flag_expires_at)
 );
 

@@ -91,8 +91,11 @@ def start_handover_cleanup_scheduler():
     cleanup_logger.info(f"Started handover flag cleanup scheduler (interval: {config.handover.cleanup_interval_minutes} minutes)")
 
 
+# Create app instance for Gunicorn (production WSGI server)
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
+    # Use the already created app instance for development
     app.run(
         host=config.host,
         port=config.port,
