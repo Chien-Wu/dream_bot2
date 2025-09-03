@@ -143,16 +143,23 @@ class OrganizationDataAnalyzer:
         if not missing_fields:
             return "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
         
-        hint = "感謝您的加入，請先提供以下資訊：\n"
-        
+        hint = "感謝您的加入，請先提供以下資訊："
+        count = 0
         if "單位全名" in missing_fields:
             hint += "1、單位全名：\n"
+            count += 1
         if "服務縣市" in missing_fields:
             hint += "2、服務縣市：\n"
+            count += 1
         if "聯絡人職稱+姓名+電話" in missing_fields:
             hint += "3、聯絡人職稱+姓名+電話：\n"
+            count += 1
         if "服務對象" in missing_fields:
-            hint += "4、服務對象（可複選）：弱勢兒少、中年困境、孤獨長者、無助動物\n"
+            hint += "4、服務對象（可複選）：弱勢兒少、中年困境、孤獨長者、無助動物。\n"
+            count += 1
+
+        if count == 4:
+            hint += "📌 一起夢想已啟用 AI 客服，能即時回答常見問題，幫助您更快得到回覆，若 AI 無法解決，也能隨時請專人接手，請放心使用！"
         
         return hint
     

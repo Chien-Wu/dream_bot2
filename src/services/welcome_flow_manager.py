@@ -37,11 +37,12 @@ class WelcomeFlowManager:
     def handle_new_user(self, user_id: str) -> None:
         """Handle new user follow event."""
         try:
-            # Create organization data record
-            self.db.create_organization_record(user_id)
+            # Create organization data record (if doesn't exist)
+            org_record = self.db.get_organization_record(user_id)
+            if not org_record:
+                self.db.create_organization_record(user_id)
             
-            # Send welcome message (from LINE@ settings)
-            # This is handled by LINE@ auto-reply, so we don't need to send it here
+            # AI welcome message is now included in organization data request message
             
             # Notify admin about new user
             self.line.notify_admin(
