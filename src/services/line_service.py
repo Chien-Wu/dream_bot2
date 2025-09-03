@@ -260,6 +260,30 @@ class LineService:
             logger.error(f"Failed to push message to {user_id}: {e}")
             raise LineAPIError(f"Push failed: {e}")
 
+    def push_admin_message(self, text: str) -> None:
+        """
+        Push message to admin without handover checks.
+        
+        Args:
+            text: Message text to send to admin
+        """
+        if not self.config.admin_user_id:
+            logger.warning("Admin user ID not configured, cannot send admin message")
+            return
+            
+        try:
+            self.messaging_api.push_message(
+                PushMessageRequest(
+                    to=self.config.admin_user_id,
+                    messages=[LineTextMessage(text=text)]
+                )
+            )
+            logger.info(f"Pushed admin message")
+            
+        except Exception as e:
+            logger.error(f"Failed to push admin message: {e}")
+            raise LineAPIError(f"Admin push failed: {e}")
+
     def _process_text(self, text: str) -> str:
         """
         Process text by cleaning reference brackets and formatting.
@@ -369,7 +393,7 @@ class LineService:
             if confidence is not None:
                 notification_text += f"信心度: {confidence:.2f}"
             
-            self.push_message(self.config.admin_user_id, notification_text)
+            self.push_admin_message(notification_text)
             logger.info(f"Notified admin about user {user_nickname} ({notification_type})")
             
         except Exception as e:

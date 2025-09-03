@@ -46,7 +46,6 @@ class OpenAIConfig:
     model: str = os.getenv('OPENAI_MODEL', 'gpt-4')
     max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '2048'))
     temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
-    vector_store_id: Optional[str] = os.getenv('OPENAI_VECTOR_STORE_ID')
     prompt_id: Optional[str] = os.getenv('OPENAI_PROMPT_ID')
     prompt_version: str = os.getenv('OPENAI_PROMPT_VERSION', '1')
     
