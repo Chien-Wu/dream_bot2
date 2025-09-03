@@ -3,18 +3,21 @@
 ## ✅ Pre-Deployment Checklist
 
 ### 1. **Environment Setup**
+
 - [ ] Server with Ubuntu 22.04+ or similar
 - [ ] Domain name configured with DNS pointing to your server
 - [ ] SSL certificate (Let's Encrypt recommended)
 - [ ] Docker and Docker Compose installed
 
 ### 2. **Required Accounts & Credentials**
+
 - [ ] LINE Channel Access Token and Secret
-- [ ] OpenAI API Key with sufficient credits  
+- [ ] OpenAI API Key with sufficient credits
 - [ ] MySQL production credentials
 - [ ] LINE Admin User ID
 
 ### 3. **Production Configuration**
+
 - [ ] `.env.production` file created with production values
 - [ ] All sensitive credentials secured (not in version control)
 - [ ] Database connection tested
@@ -25,6 +28,7 @@
 ## 🐳 Docker Deployment (Recommended)
 
 ### Step 1: Server Preparation
+
 ```bash
 # Update system
 sudo apt update && sudo apt upgrade -y
@@ -42,9 +46,10 @@ sudo chmod +x /usr/local/bin/docker-compose
 ```
 
 ### Step 2: Application Setup
+
 ```bash
 # Clone your repository
-git clone https://github.com/your-username/dream_bot2.git
+git clone https://github.com/Chien-Wu/dream_bot2.git
 cd dream_bot2
 
 # Create production environment file
@@ -52,9 +57,11 @@ cp .env.example .env.production
 ```
 
 ### Step 3: Configure Production Environment
+
 Edit `.env.production`:
+
 ```bash
-# Application Environment  
+# Application Environment
 ENVIRONMENT=production
 DEBUG=false
 LOG_LEVEL=INFO
@@ -93,6 +100,7 @@ HANDOVER_CLEANUP_INTERVAL_MINUTES=15
 ```
 
 ### Step 4: Deploy Application
+
 ```bash
 # Build and start services
 docker-compose --env-file .env.production up -d
@@ -105,6 +113,7 @@ docker-compose logs -f dream-bot
 ```
 
 ### Step 5: Verify Deployment
+
 ```bash
 # Test health endpoint
 curl http://localhost:5000/health
@@ -120,12 +129,15 @@ docker-compose exec dream-bot python -c "from src.services.database_service impo
 ## 🌐 Nginx Reverse Proxy (Production Domain)
 
 ### Step 1: Install Nginx
+
 ```bash
 sudo apt install nginx certbot python3-certbot-nginx
 ```
 
 ### Step 2: Configure Nginx
+
 Create `/etc/nginx/sites-available/dream-bot`:
+
 ```nginx
 server {
     listen 80;
@@ -137,13 +149,13 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        
+
         # Timeouts for LINE webhook
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
     }
-    
+
     location /health {
         proxy_pass http://localhost:5000/health;
         access_log off;
@@ -152,6 +164,7 @@ server {
 ```
 
 ### Step 3: Enable Site and SSL
+
 ```bash
 # Enable the site
 sudo ln -s /etc/nginx/sites-available/dream-bot /etc/nginx/sites-enabled/
@@ -170,6 +183,7 @@ sudo certbot renew --dry-run
 ## 🔗 LINE Bot Configuration
 
 ### Step 1: Update Webhook URL
+
 1. Go to [LINE Developers Console](https://developers.line.biz/)
 2. Select your channel
 3. Go to **Messaging API** tab
@@ -178,6 +192,7 @@ sudo certbot renew --dry-run
 6. Click **Verify** to test the connection
 
 ### Step 2: Test Webhook
+
 ```bash
 # Monitor logs while testing
 docker-compose logs -f dream-bot
@@ -191,6 +206,7 @@ docker-compose logs -f dream-bot
 ## 🔒 Security Configuration
 
 ### Step 1: Firewall Setup
+
 ```bash
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
@@ -201,12 +217,14 @@ sudo ufw enable
 ```
 
 ### Step 2: Secure Environment Files
+
 ```bash
 sudo chmod 600 .env.production
 sudo chown $USER:$USER .env.production
 ```
 
 ### Step 3: Regular Security Updates
+
 ```bash
 # Add to crontab for automatic updates
 echo "0 2 * * 0 apt update && apt upgrade -y" | sudo crontab -
@@ -217,7 +235,9 @@ echo "0 2 * * 0 apt update && apt upgrade -y" | sudo crontab -
 ## 📊 Monitoring & Maintenance
 
 ### Step 1: Health Monitoring
+
 Create `/opt/dream-bot/health_monitor.sh`:
+
 ```bash
 #!/bin/bash
 HEALTH_URL="https://your-domain.com/health"
@@ -234,12 +254,14 @@ fi
 ```
 
 ### Step 2: Automated Backups
+
 ```bash
 # Add database backup to crontab
 echo "0 3 * * * docker-compose exec mysql mysqldump -u root -p\$MYSQL_ROOT_PASSWORD dream_bot_db > /backup/dream_bot_\$(date +%Y%m%d).sql" | crontab -
 ```
 
 ### Step 3: Log Management
+
 ```bash
 # Configure log rotation
 sudo tee /etc/logrotate.d/dream-bot << EOF
@@ -262,12 +284,14 @@ EOF
 ### Common Issues & Solutions
 
 **1. Docker containers won't start**
+
 ```bash
 docker-compose logs dream-bot
 # Check for missing environment variables or database connection issues
 ```
 
 **2. LINE webhook fails**
+
 ```bash
 # Check if port 5000 is accessible
 sudo netstat -tulpn | grep :5000
@@ -277,6 +301,7 @@ curl http://localhost:5000/health
 ```
 
 **3. Database connection errors**
+
 ```bash
 # Check if MySQL container is running
 docker-compose ps mysql
@@ -286,6 +311,7 @@ docker-compose exec mysql mysql -u dream_bot -p dream_bot_db
 ```
 
 **4. SSL certificate issues**
+
 ```bash
 # Check certificate status
 sudo certbot certificates
@@ -299,6 +325,7 @@ sudo certbot renew --force-renewal
 ## 🔄 Updates & Deployment
 
 ### Production Update Process
+
 ```bash
 # Pull latest changes
 git pull origin main
@@ -316,6 +343,7 @@ curl https://your-domain.com/health
 ## 📞 Production Support
 
 ### Essential Commands
+
 ```bash
 # View application logs
 docker-compose logs -f dream-bot
@@ -331,6 +359,7 @@ docker-compose restart dream-bot
 ```
 
 ### Monitoring Endpoints
+
 - **Health Check**: `https://your-domain.com/health`
 - **LINE Webhook**: `https://your-domain.com/callback`
 
@@ -339,6 +368,7 @@ docker-compose restart dream-bot
 ## ✅ Final Checklist
 
 Before going live:
+
 - [ ] All environment variables configured correctly
 - [ ] Database is accessible and tables initialized
 - [ ] Health endpoint returns 200 OK
