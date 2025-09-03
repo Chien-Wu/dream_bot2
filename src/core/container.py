@@ -127,13 +127,21 @@ class Container:
                 if param.annotation == param.empty:
                     continue
                     
+                # Handle string annotations (forward references)
+                annotation = param.annotation
+                if isinstance(annotation, str):
+                    # Skip string annotations - they can't be resolved by the container
+                    if param.default == param.empty:
+                        logger.warning(f"Cannot resolve string annotation '{annotation}' for {cls.__name__}")
+                    continue
+                
                 # Try to resolve the dependency
                 try:
-                    params[param_name] = self.resolve(param.annotation)
+                    params[param_name] = self.resolve(annotation)
                 except ValueError:
                     # If dependency not found, check if param has default
                     if param.default == param.empty:
-                        logger.warning(f"Cannot resolve dependency {param.annotation.__name__} for {cls.__name__}")
+                        logger.warning(f"Cannot resolve dependency {annotation.__name__} for {cls.__name__}")
                         continue
             
             instance = cls(**params)

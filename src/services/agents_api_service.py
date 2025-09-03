@@ -1,11 +1,9 @@
 # src/services/agents_api_service.py
-import asyncio
 import json
 from dataclasses import dataclass
 from typing import Optional
 
 from openai import OpenAI
-from agents import Agent, Runner, SQLiteSession, FileSearchTool, ModelSettings
 
 from config import config
 from src.utils import setup_logger
@@ -23,9 +21,8 @@ class ConversationMessage:
 
 class AgentsAPIService:
     """
-    使用 OpenAI Agents SDK（JSON 結構化回覆版）：
-    - Agent + SQLiteSession：自動保存多輪對話上下文
-    - FileSearchTool：連結既有向量庫（如有設定 vector_store_id）
+    使用 OpenAI Prompt API 進行回覆：
+    - responses.create() 搭配 prompt ID
     - 解析 JSON 回覆並返回完整的 AIResponse 結構
     """
 
@@ -33,76 +30,61 @@ class AgentsAPIService:
         self.config = config.openai
         self.db = database_service
 
-        # OpenAI 官方 SDK（可做 vector store 等 REST 操作）
+        # OpenAI 官方 SDK
         self.client = OpenAI(api_key=self.config.api_key)
 
-        self.model = self.config.model  # 例如 "gpt-4o"
-        self.temperature = getattr(self.config, "temperature", 0.2)
-        self.max_output_tokens = getattr(self.config, "max_tokens", 1024)
-        self.vector_store_id = getattr(self.config, "vector_store_id", None)
-
-        # 從 system_prompt.md 載入系統提示
-        self.system_prompt = self._load_system_prompt()
-
-        # 構建工具列（可選的 File Search）
-        tools = []
-        if self.vector_store_id:
-            tools.append(
-                FileSearchTool(
-                    vector_store_ids=[self.vector_store_id],
-                    max_num_results=5,  # 可調整以降低延遲/成本
-                )
-            )
-
-        # 建立 Agent（生成參數放進 ModelSettings）
-        self.agent = Agent(
-            name="Simple Assistant",
-            instructions=self.system_prompt,
-            model=self.model,
-            tools=tools,
-            model_settings=ModelSettings(
-                temperature=self.temperature,
-                max_tokens=self.max_output_tokens,
-            ),
-        )
+        self.prompt_id = self.config.prompt_id
+        self.prompt_version = self.config.prompt_version
+        
+        if not self.prompt_id:
+            raise ValueError("OPENAI_PROMPT_ID must be set")
 
     def get_response(self, user_id: str, user_input: str) -> AIResponse:
         """
-        以 Agents SDK 執行單輪（session 記憶會自動接上歷史）。
-        傳入「單一字串」即可（不要 messages list）。
+        使用 OpenAI Prompt API 執行單輪對話。
         """
         try:
-            # 1) 建立/重用 Session（本地 SQLite）
-            session = SQLiteSession(session_id=f"session:{user_id}")
-
-            # 2) 如有使用者背景，前置到單一字串
+            # 如有使用者背景，前置到單一字串
             user_ctx = self._get_user_context(user_id)
             if user_ctx:
-                turn_text = f"【使用者背景】\n{user_ctx}\n\n【問題】\n{user_input}"
+                input_text = f"【使用者背景】\n{user_ctx}\n\n【問題】\n{user_input}"
             else:
-                turn_text = user_input
+                input_text = user_input
 
-            # 3) 執行（async 版 Runner.run；在當前執行緒建立/取得事件迴圈）
-            async def _run_agent():
-                return await Runner.run(self.agent, turn_text, session=session)
+            # 取得用戶上一輪回應ID
+            last_response_id = self.db.get_user_thread_id(user_id)
+            
+            # 準備API呼叫參數
+            kwargs = {
+                "prompt": {
+                    "id": self.prompt_id,
+                    "version": self.prompt_version
+                },
+                "input": input_text
+            }
+            
+            # 如果有上一輪對話，加入previous_response_id
+            if last_response_id:
+                kwargs["previous_response_id"] = last_response_id
+            
+            # 使用 responses.create 呼叫 prompt ID
+            response = self.client.responses.create(**kwargs)
+            
+            # 儲存此次回應ID供下次對話使用
+            self.db.set_user_thread_id(user_id, response.id)
 
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
+            # 取得回覆文字
+            if hasattr(response, 'output_text'):
+                response_text = response.output_text
+            elif hasattr(response, 'content'):
+                response_text = response.content
+            else:
+                response_text = str(response)
 
-            result = loop.run_until_complete(_run_agent())
-
-            # 4) 取得回覆並解析 JSON 結構
-            response_text = getattr(result, "output_text", None) or str(result.final_output)
-            if not response_text:
-                response_text = str(result)
-
-            # 嘗試解析 JSON 回覆
+            # 解析 JSON 回覆
             parsed = self._parse_json_response(response_text, user_id)
 
-            # 5) 落庫（沿用你的流程）
+            # 落庫
             message_history_id = self.db.log_message(
                 user_id=user_id,
                 content=user_input,
@@ -197,23 +179,6 @@ class AgentsAPIService:
             user_id=user_id
         )
 
-    def _load_system_prompt(self) -> str:
-        """Load system prompt from system_prompt.md file."""
-        try:
-            with open('system_prompt.md', 'r', encoding='utf-8') as f:
-                return f.read().strip()
-        except FileNotFoundError:
-            logger.warning("system_prompt.md not found, using fallback prompt")
-            return (
-                "你是一位專業、友善且精簡的助理。"
-                "回答時直截了當、語氣自然；若需要引用文件，先用提供的 File Search 工具檢索。"
-            )
-        except Exception as e:
-            logger.error(f"Error loading system prompt: {e}")
-            return (
-                "你是一位專業、友善且精簡的助理。"
-                "回答時直截了當、語氣自然；若需要引用文件，先用提供的 File Search 工具檢索。"
-            )
     
     def _get_user_context(self, user_id: str) -> str:
         try:
@@ -233,20 +198,21 @@ class AgentsAPIService:
         except Exception as e:
             logger.error(f"Failed to get user context for {user_id}: {e}")
             return ""
+    
 
     def _refresh_user_context(self, user_id: str, thread_id: str) -> None:
         """
         Refresh user context in existing session.
-        For AgentsAPIService, context is handled automatically by session persistence.
+        For Prompt API, context is handled per-request.
         
         Args:
             user_id: User's LINE ID
-            thread_id: Thread/Session ID (not used in Agents SDK but kept for interface compatibility)
+            thread_id: Thread/Session ID (not used in Prompt API but kept for interface compatibility)
         """
         try:
             user_context = self._get_user_context(user_id)
             if user_context:
-                logger.info(f"User context refreshed for {user_id} (handled by session persistence)")
+                logger.info(f"User context refreshed for {user_id}")
             else:
                 logger.debug(f"No context to refresh for {user_id}")
                 

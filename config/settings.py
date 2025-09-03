@@ -47,6 +47,8 @@ class OpenAIConfig:
     max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '2048'))
     temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
     vector_store_id: Optional[str] = os.getenv('OPENAI_VECTOR_STORE_ID')
+    prompt_id: Optional[str] = os.getenv('OPENAI_PROMPT_ID')
+    prompt_version: str = os.getenv('OPENAI_PROMPT_VERSION', '1')
     
     def __post_init__(self):
         if not self.api_key:

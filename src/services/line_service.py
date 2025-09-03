@@ -27,7 +27,7 @@ logger = setup_logger(__name__)
 class LineService:
     """Service for LINE messaging operations."""
     
-    def __init__(self, user_handover_service: Optional['UserHandoverService'] = None):
+    def __init__(self, user_handover_service: 'UserHandoverService' = None):
         self.config = config.line
         line_config = Configuration(access_token=self.config.channel_access_token)
         self.messaging_api = MessagingApi(ApiClient(line_config))
