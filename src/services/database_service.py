@@ -390,7 +390,6 @@ class DatabaseService:
                     params.append(f"\n{raw_message}")
                 
                 update_fields.append("updated_at = CURRENT_TIMESTAMP")
-                params.append(user_id)
                 
                 query = f"""
                     UPDATE organization_data 
@@ -398,7 +397,7 @@ class DatabaseService:
                     WHERE user_id = %s
                 """
                 
-                cursor.execute(query, params)
+                cursor.execute(query, params + [user_id])
                 conn.commit()
                 
         except Exception as e:

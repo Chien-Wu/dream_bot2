@@ -143,7 +143,7 @@ class OrganizationDataAnalyzer:
         if not missing_fields:
             return "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
         
-        hint = "感謝您的加入，請先提供以下資訊："
+        hint = "感謝您的加入，請先提供以下資訊：\n"
         count = 0
         if "單位全名" in missing_fields:
             hint += "1、單位全名：\n"
