@@ -361,7 +361,7 @@ class LineService:
             user_msg: User's original message
             confidence: AI confidence score (if any)
             ai_explanation: AI's explanation (if any)
-            notification_type: Type of notification (handover, new_user, media)
+            notification_type: Type of notification (handover, new_user, media, ai_error)
             ai_query: AI query to use as keyword (if any)
         """
         if not self.config.admin_user_id:
@@ -379,7 +379,8 @@ class LineService:
                 "handover": "用戶需要人工協助",
                 "new_user": "新用戶加入",
                 "media": "用戶傳送媒體檔案",
-                "low_confidence": "AI回覆信心度偏低"
+                "low_confidence": "AI回覆信心度偏低",
+                "ai_error": "AI系統發生錯誤"
             }
             
             title = titles.get(notification_type, "用戶需要人工協助")

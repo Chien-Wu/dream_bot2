@@ -94,12 +94,8 @@ class AgentsAPIService:
 
         except Exception as e:
             logger.error(f"Error in get_response: {e}")
-            return AIResponse(
-                text="抱歉，AI 服務暫時無法回應，請稍後再試。",
-                confidence=0.0,
-                explanation=f"Error: {str(e)}",
-                user_id=user_id,
-            )
+            # Re-raise all API errors so message processor can handle them as ai_error
+            raise e
 
     # ===== 輔助 =====
     def _parse_json_response(self, response_text: str, user_id: str) -> AIResponse:

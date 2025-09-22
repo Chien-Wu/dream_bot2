@@ -39,7 +39,7 @@ class MessageProcessor:
     def process_message(self, message: Message) -> None:
         """
         Process an incoming message with queue management and buffering.
-
+        
         Args:
             message: Incoming message to process
         """
@@ -269,12 +269,84 @@ class MessageProcessor:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to get AI response for user {message.user_id}: {e}")
+            logger.error(f"AI API failed for user {message.user_id}: {e}")
             import traceback
             logger.error(f"AI response error traceback: {traceback.format_exc()}")
-            self._send_error_response(message.user_id, message.reply_token)
+
+            # Check if it's a thread-related error that needs reset
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ["previous_response_not_found", "thread", "session", "conversation", "previous_response_id"]):
+                logger.info(f"Resetting thread for user {message.user_id} due to thread error")
+                try:
+                    # Reset user's thread
+                    self.db.reset_user_thread(message.user_id)
+
+                    # Try once more with fresh thread
+                    ai_response = self.ai.get_response(message.user_id, message.content)
+
+                    # If successful, process normally
+                    if ai_response.needs_human_review:
+                        logger.info(f"Low confidence AI response for user {message.user_id}, notifying admin silently")
+                        try:
+                            ai_query = None
+                            if ai_response.queries and len(ai_response.queries) > 0:
+                                first_query = ai_response.queries[0]
+                                if isinstance(first_query, dict) and "q" in first_query:
+                                    ai_query = first_query["q"]
+
+                            self.line.notify_admin(
+                                user_id=message.user_id,
+                                user_msg=message.content,
+                                confidence=ai_response.confidence,
+                                ai_explanation=ai_response.explanation,
+                                notification_type="low_confidence",
+                                ai_query=ai_query
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to notify admin: {e}")
+                        logger.debug(f"Silent handling for low confidence response to user {message.user_id}")
+                    else:
+                        logger.debug(f"Sending high confidence AI response to user {message.user_id}")
+                        self.line.send_message(message.user_id, ai_response.text, message.reply_token)
+
+                    # Push debug info separately if enabled
+                    if config.show_ai_debug_info:
+                        debug_info = "🔧 AI詳細資訊：\n"
+                        if ai_response.explanation:
+                            debug_info += f"AI說明：\n{ai_response.explanation}\n"
+                        debug_info += f"信心度：{ai_response.confidence:.2f}"
+
+                        # Push debug info as separate message
+                        time.sleep(0.5)  # Small delay to ensure proper message order
+                        self.line.push_message(message.user_id, debug_info)
+
+                    log_user_action(
+                        logger,
+                        message.user_id,
+                        "message_processed",
+                        confidence=ai_response.confidence,
+                        needs_review=ai_response.needs_human_review
+                    )
+
+                    return True
+
+                except Exception as retry_error:
+                    logger.error(f"Retry after thread reset also failed for user {message.user_id}: {retry_error}")
+                    # Fall through to admin notification
+
+            # Notify admin about AI error - no user response
+            try:
+                self.line.notify_admin(
+                    user_id=message.user_id,
+                    user_msg=message.content,
+                    notification_type="ai_error",
+                    ai_explanation=f"AI API Error: {str(e)}"
+                )
+            except Exception as admin_error:
+                logger.error(f"Failed to notify admin about AI error: {admin_error}")
+
+            # Silent failure - no response to user
             return True
-    
     
     
     def _send_error_response(self, user_id: str, reply_token: str = None) -> None:
