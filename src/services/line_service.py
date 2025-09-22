@@ -361,7 +361,7 @@ class LineService:
             user_msg: User's original message
             confidence: AI confidence score (if any)
             ai_explanation: AI's explanation (if any)
-            notification_type: Type of notification (handover, new_user, image)
+            notification_type: Type of notification (handover, new_user, media)
             ai_query: AI query to use as keyword (if any)
         """
         if not self.config.admin_user_id:
@@ -378,7 +378,7 @@ class LineService:
             titles = {
                 "handover": "用戶需要人工協助",
                 "new_user": "新用戶加入",
-                "image": "用戶傳送圖片",
+                "media": "用戶傳送媒體檔案",
                 "low_confidence": "AI回覆信心度偏低"
             }
             
@@ -416,26 +416,28 @@ class LineService:
                 return None
             
             message_type = type(event.message).__name__
-            
-            # Handle different message types
-            if message_type == "StickerMessageContent":
-                return None  # Ignore stickers
-            
-            if message_type == "ImageMessageContent":
+
+            # Handle media messages - notify admin, no user response
+            if message_type in ["ImageMessageContent", "VideoMessageContent", "AudioMessageContent", "FileMessageContent", "LocationMessageContent"]:
                 return Message(
-                    content="[Image]",
+                    content="[Media File]",
                     user_id=event.source.user_id,
-                    message_type="image",
+                    message_type="media",
                     reply_token=event.reply_token
                 )
-            
+
+            # Handle stickers and other non-text
+            if message_type == "StickerMessageContent":
+                return None  # Ignore stickers
+
             if not hasattr(event.message, 'text'):
-                return None  # Ignore non-text messages
-            
+                return None  # Ignore other non-text messages
+
+            # Handle text messages
             user_input = event.message.text.strip()
             if not user_input:
                 return None
-            
+
             return Message(
                 content=user_input,
                 user_id=event.source.user_id,

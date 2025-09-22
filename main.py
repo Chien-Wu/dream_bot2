@@ -9,7 +9,6 @@ from config import config
 from src.utils import setup_logger
 from src.core import container, MessageProcessor
 from src.services import DatabaseService, AgentsAPIService, LineService
-from src.services.admin_command_service import AdminCommandService
 from src.services.user_handover_service import UserHandoverService
 from src.controllers import WebhookController
 
@@ -34,14 +33,9 @@ def create_app() -> Flask:
     db_service = container.resolve(DatabaseService)
     db_service.initialize_tables()
     
-    # Eager initialization of critical services to ensure they're ready immediately
-    # Initialize in dependency order to ensure proper singleton sharing
-    admin_command_service = container.resolve(AdminCommandService)
-    logger.info("Admin command service initialized and ready")
-    
-    # Pre-resolve MessageProcessor to ensure it uses the same AdminCommandService instance
+    # Initialize MessageProcessor
     message_processor = container.resolve(MessageProcessor)
-    logger.info("Message processor initialized with admin command service")
+    logger.info("Message processor initialized")
     line_service = container.resolve(LineService)
     webhook_controller = WebhookController(app, message_processor, line_service)
     
@@ -60,7 +54,6 @@ def setup_dependencies():
     container.register_singleton(UserHandoverService)  # Must be before LineService
     container.register_singleton(LineService)
     container.register_singleton(AgentsAPIService)
-    container.register_singleton(AdminCommandService)
     container.register_singleton(MessageProcessor)
 
 

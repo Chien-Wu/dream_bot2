@@ -31,7 +31,6 @@ dream_line_bot_v2/
 │   │   ├── database_service.py
 │   │   ├── agents_api_service.py
 │   │   ├── line_service.py
-│   │   ├── admin_command_service.py
 │   │   └── user_handover_service.py
 │   ├── controllers/           # API 控制器
 │   │   └── webhook_controller.py
@@ -54,7 +53,6 @@ dream_line_bot_v2/
 - **MessageProcessor**: 所有訊息處理的中央協調器
 - **MessageBuffer**: 智能訊息緩衝，整合短訊息為完整上下文
 - **AgentsAPIService**: OpenAI Agents API 整合服務
-- **AdminCommandService**: 管理員指令處理器
 - **UserHandoverService**: 用戶轉人工服務管理
 - **DatabaseService**: 資料庫操作，支援連接池
 - **LineService**: LINE Bot 訊息操作

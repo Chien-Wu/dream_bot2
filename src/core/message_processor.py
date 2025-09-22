@@ -9,7 +9,6 @@ from config import config
 from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, AgentsAPIService, LineService
-from src.services.admin_command_service import AdminCommandService
 from src.services.user_handover_service import UserHandoverService
 from src.core.message_buffer import message_buffer
 
@@ -24,25 +23,15 @@ class MessageProcessor:
                  database_service: DatabaseService,
                  agents_api_service: AgentsAPIService,
                  line_service: LineService,
-                 admin_command_service: AdminCommandService,
                  user_handover_service: UserHandoverService):
         self.db = database_service
         self.agents_api_service = agents_api_service
         self.line = line_service
-        self.admin_commands = admin_command_service
         self.handover_service = user_handover_service
         
         # Use Agents API service exclusively
         self.ai = agents_api_service
         logger.info("Using Agents API service")
-        
-        # Debug: Verify admin command service is properly initialized
-        logger.info(f"MessageProcessor initialized with AdminCommandService: {id(self.admin_commands)}")
-        try:
-            logger.info(f"AdminCommandService has {len(self.admin_commands.commands)} registered commands")
-        except (TypeError, AttributeError):
-            # Handle mock objects in tests
-            logger.info("AdminCommandService initialized (mock or missing commands)")
         
         # Set up message buffer callback
         message_buffer.set_process_callback(self._process_buffered_message)
@@ -50,16 +39,18 @@ class MessageProcessor:
     def process_message(self, message: Message) -> None:
         """
         Process an incoming message with queue management and buffering.
-        
+
         Args:
             message: Incoming message to process
         """
-        # Try to buffer the message if it's short and incomplete
-        if message_buffer.add_message(message):
-            logger.debug(f"Message buffered for user {message.user_id}")
-            return
-        
-        # If not buffered, process normally
+        # Only buffer text messages - handle media messages immediately
+        if message.message_type == "text":
+            # Try to buffer the message if it's short and incomplete
+            if message_buffer.add_message(message):
+                logger.debug(f"Message buffered for user {message.user_id}")
+                return
+
+        # Process immediately (non-text messages or unbuffered text messages)
         # Start processing in background thread to avoid blocking
         threading.Thread(
             target=self._handle_single_message,
@@ -103,8 +94,7 @@ class MessageProcessor:
 
             # Chain of responsibility - each handler returns True if it handled the message
             handlers = [
-                self._handle_non_text_messages,
-                self._handle_admin_commands,
+                self._handle_media_messages,
                 self._handle_handover_requests,
                 self._handle_ai_response
             ]
@@ -162,77 +152,25 @@ class MessageProcessor:
             logger.error(f"Failed to process buffered message for user {user_id}: {e}")
             self._send_error_response(user_id, reply_token)
     
-    def _handle_non_text_messages(self, message: Message) -> bool:
-        """Handle non-text messages (images, stickers, etc.)."""
-        if message.message_type == "image":
+    def _handle_media_messages(self, message: Message) -> bool:
+        """Handle media messages (images, videos, audio, files)."""
+        if message.message_type == "media":
             try:
                 self.line.notify_admin(
                     user_id=message.user_id,
-                    user_msg="使用者傳送了一張圖片",
-                    notification_type="image"
+                    user_msg="使用者傳送了媒體檔案",
+                    notification_type="media"
                 )
-                
-                self.line.send_message(
-                    message.user_id,
-                    "已為您通知管理者，請稍候。",
-                    message.reply_token
-                )
+
+                # Silent handling - no response to user
                 return True
-                
+
             except Exception as e:
-                logger.error(f"Failed to handle image message: {e}")
+                logger.error(f"Failed to handle media message: {e}")
                 return True
-        
-        if message.message_type != "text":
-            logger.debug(f"Ignoring message type: {message.message_type}")
-            return True
-            
+
         return False
     
-    def _handle_admin_commands(self, message: Message) -> bool:
-        """Handle admin commands."""
-        if not self._is_admin_user(message.user_id):
-            return False
-        
-        if not self.admin_commands.is_admin_command(message.content):
-            return False
-            
-        try:
-            logger.info(f"Processing admin command from {message.user_id}: {message.content}")
-            
-            log_user_action(
-                logger,
-                message.user_id,
-                "admin_command_received",
-                command=message.content
-            )
-            
-            response = self.admin_commands.execute_command(message.content)
-            
-            self.line.send_raw_message(
-                message.user_id,
-                response,
-                message.reply_token
-            )
-            
-            log_user_action(
-                logger,
-                message.user_id,
-                "admin_command_executed",
-                command=message.content.split()[0] if message.content.split() else "",
-                success=True
-            )
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Failed to handle admin command from {message.user_id}: {e}")
-            self.line.send_raw_message(
-                message.user_id,
-                "❌ 執行管理指令時發生錯誤，請稍後再試。",
-                message.reply_token
-            )
-            return True
     
     def _ensure_user_record(self, user_id: str) -> None:
         """Ensure user record exists in organization_data table."""
@@ -280,12 +218,9 @@ class MessageProcessor:
             
             # Send normal response first
             if ai_response.needs_human_review:
-                logger.info(f"Low confidence AI response for user {message.user_id}, setting handover flag")
-                
-                # Set handover flag for low confidence responses
-                self.handover_service.set_handover_flag(message.user_id)
-                
-                # Notify admin for low confidence responses
+                logger.info(f"Low confidence AI response for user {message.user_id}, notifying admin silently")
+
+                # Notify admin for low confidence responses (no user message, no flag)
                 try:
                     # Extract first query "q" field if available
                     ai_query = None
@@ -293,7 +228,7 @@ class MessageProcessor:
                         first_query = ai_response.queries[0]
                         if isinstance(first_query, dict) and "q" in first_query:
                             ai_query = first_query["q"]
-                    
+
                     self.line.notify_admin(
                         user_id=message.user_id,
                         user_msg=message.content,
@@ -304,11 +239,9 @@ class MessageProcessor:
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify admin: {e}")
-                
-                # Low confidence - send handover message
-                handover_message = "此問題需要由專人處理，我們會請同仁盡快與您聯絡，謝謝您的提問！"
-                logger.debug(f"Sending handover message to user {message.user_id}")
-                self.line.send_message(message.user_id, handover_message, message.reply_token)
+
+                # Low confidence - complete silence to user, no handover flag
+                logger.debug(f"Silent handling for low confidence response to user {message.user_id}")
             else:
                 # High confidence - send AI response
                 logger.debug(f"Sending high confidence AI response to user {message.user_id}")
@@ -342,11 +275,6 @@ class MessageProcessor:
             self._send_error_response(message.user_id, message.reply_token)
             return True
     
-    def _is_admin_user(self, user_id: str) -> bool:
-        """Check if user is an admin."""
-        is_admin = user_id == config.line.admin_user_id
-        logger.debug(f"Admin check: user_id={user_id}, admin_user_id={config.line.admin_user_id}, is_admin={is_admin}")
-        return is_admin
     
     
     def _send_error_response(self, user_id: str, reply_token: str = None) -> None:
