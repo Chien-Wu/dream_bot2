@@ -29,11 +29,10 @@ dream_line_bot_v2/
 │   │   └── message_buffer.py  # 訊息緩衝管理
 │   ├── services/              # 業務服務
 │   │   ├── database_service.py
-│   │   ├── openai_service.py
+│   │   ├── agents_api_service.py
 │   │   ├── line_service.py
-│   │   ├── function_handler.py
-│   │   ├── organization_analyzer.py
-│   │   └── welcome_flow_manager.py
+│   │   ├── admin_command_service.py
+│   │   └── user_handover_service.py
 │   ├── controllers/           # API 控制器
 │   │   └── webhook_controller.py
 │   ├── models/               # 資料模型
@@ -54,11 +53,10 @@ dream_line_bot_v2/
 
 - **MessageProcessor**: 所有訊息處理的中央協調器
 - **MessageBuffer**: 智能訊息緩衝，整合短訊息為完整上下文
-- **FunctionHandler**: OpenAI Assistant 功能調用處理器
-- **OrganizationAnalyzer**: 組織資料分析與管理
-- **WelcomeFlowManager**: 新用戶歡迎流程管理
+- **AgentsAPIService**: OpenAI Agents API 整合服務
+- **AdminCommandService**: 管理員指令處理器
+- **UserHandoverService**: 用戶轉人工服務管理
 - **DatabaseService**: 資料庫操作，支援連接池
-- **OpenAIService**: OpenAI Assistant API 互動管理
 - **LineService**: LINE Bot 訊息操作
 - **Container**: 服務管理的依賴注入容器
 
