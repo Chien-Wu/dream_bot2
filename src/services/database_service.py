@@ -109,26 +109,33 @@ class DatabaseService:
                 );
                 """
                 
-                # Organization data table
+                # Organization data table (simplified)
                 create_organization_sql = """
                 CREATE TABLE IF NOT EXISTS organization_data (
                     user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+                    username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-                    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-                    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-                    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-                    completion_status ENUM('pending', 'partial', 'complete') DEFAULT 'pending',
-                    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_completion_status (completion_status),
                     INDEX idx_created_at (created_at)
+                );
+                """
+
+                # User handover flags table
+                create_handover_sql = """
+                CREATE TABLE IF NOT EXISTS user_handover_flags (
+                    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+                    expires_at TIMESTAMP NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_expires_at (expires_at)
                 );
                 """
                 
                 cursor.execute(create_user_threads_sql)
                 cursor.execute(create_messages_sql)
                 cursor.execute(create_organization_sql)
+                cursor.execute(create_handover_sql)
                 
                 # Add explanation column if it doesn't exist (for existing installations)
                 cursor.execute("SHOW COLUMNS FROM message_history LIKE 'ai_explanation'")
@@ -172,20 +179,35 @@ class DatabaseService:
                 else:
                     logger.info("ai_detail table already exists")
                 
-                # Add handover flag column if it doesn't exist (for existing installations)
-                cursor.execute("SHOW COLUMNS FROM organization_data LIKE 'handover_flag_expires_at'")
-                handover_column_exists = cursor.fetchone()
-                
-                if not handover_column_exists:
-                    logger.info("Adding handover_flag_expires_at column to organization_data table...")
-                    cursor.execute("""
-                        ALTER TABLE organization_data 
-                        ADD COLUMN handover_flag_expires_at TIMESTAMP NULL,
-                        ADD INDEX idx_handover_expires (handover_flag_expires_at)
-                    """)
-                    logger.info("handover_flag_expires_at column added successfully")
+                # Migrate existing organization_data table to new simplified schema
+                cursor.execute("SHOW COLUMNS FROM organization_data")
+                existing_columns = [col[0] for col in cursor.fetchall()]
+
+                # Check if we need to migrate from old schema
+                if 'completion_status' in existing_columns:
+                    logger.info("Migrating organization_data table to simplified schema...")
+
+                    # Add username column if it doesn't exist
+                    if 'username' not in existing_columns:
+                        cursor.execute("ALTER TABLE organization_data ADD COLUMN username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
+
+                    # Drop old columns that are no longer needed
+                    old_columns = ['service_city', 'contact_info', 'service_target', 'completion_status', 'raw_messages', 'handover_flag_expires_at']
+                    for col in old_columns:
+                        if col in existing_columns:
+                            cursor.execute(f"ALTER TABLE organization_data DROP COLUMN {col}")
+
+                    # Drop old indexes
+                    cursor.execute("SHOW INDEXES FROM organization_data")
+                    indexes = [idx[2] for idx in cursor.fetchall()]
+                    old_indexes = ['idx_completion_status', 'idx_handover_expires', 'idx_handover_flag_expires_at']
+                    for idx in old_indexes:
+                        if idx in indexes:
+                            cursor.execute(f"DROP INDEX {idx} ON organization_data")
+
+                    logger.info("Organization data table migration completed")
                 else:
-                    logger.info("handover_flag_expires_at column already exists")
+                    logger.info("Organization data table already uses simplified schema")
                 
                 conn.commit()
                 
@@ -324,22 +346,22 @@ class DatabaseService:
             # Don't raise exception for logging failures to avoid disrupting main flow
             pass
     
-    def create_organization_record(self, user_id: str) -> None:
-        """Create a new organization data record for a user."""
+    def ensure_user_record(self, user_id: str) -> None:
+        """Ensure a user record exists in organization_data table."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO organization_data (user_id, completion_status) 
-                    VALUES (%s, 'pending')
+                    INSERT INTO organization_data (user_id)
+                    VALUES (%s)
                     ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP
                 """, (user_id,))
                 conn.commit()
-                
+
         except Exception as e:
-            logger.error(f"Failed to create organization record for user {user_id}: {e}")
-            raise DatabaseError(f"Failed to create organization record: {e}")
-    
+            logger.error(f"Failed to ensure user record for {user_id}: {e}")
+            raise DatabaseError(f"Failed to ensure user record: {e}")
+
     def get_organization_record(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Get organization data record for a user."""
         try:
@@ -350,79 +372,43 @@ class DatabaseService:
                 """, (user_id,))
                 result = cursor.fetchone()
                 return result
-                
+
         except Exception as e:
             logger.error(f"Failed to get organization record for user {user_id}: {e}")
             raise DatabaseError(f"Failed to retrieve organization record: {e}")
-    
-    def update_organization_record(self, user_id: str, organization_data, 
-                                 completion_status: str, raw_message: str = None) -> None:
+
+    def update_organization_record(self, user_id: str, username: str = None,
+                                 organization_name: str = None) -> None:
         """Update organization data record."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                
+
                 # Build update query based on provided data
                 update_fields = []
                 params = []
-                
-                if organization_data.organization_name:
+
+                if username is not None:
+                    update_fields.append("username = %s")
+                    params.append(username)
+
+                if organization_name is not None:
                     update_fields.append("organization_name = %s")
-                    params.append(organization_data.organization_name)
-                
-                if organization_data.service_city:
-                    update_fields.append("service_city = %s")
-                    params.append(organization_data.service_city)
-                
-                if organization_data.contact_info:
-                    update_fields.append("contact_info = %s")
-                    params.append(organization_data.contact_info)
-                
-                if organization_data.service_target:
-                    update_fields.append("service_target = %s")
-                    params.append(organization_data.service_target)
-                
-                update_fields.append("completion_status = %s")
-                params.append(completion_status)
-                
-                if raw_message:
-                    update_fields.append("raw_messages = CONCAT(COALESCE(raw_messages, ''), %s)")
-                    params.append(f"\n{raw_message}")
-                
-                update_fields.append("updated_at = CURRENT_TIMESTAMP")
-                
-                query = f"""
-                    UPDATE organization_data 
-                    SET {', '.join(update_fields)}
-                    WHERE user_id = %s
-                """
-                
-                cursor.execute(query, params + [user_id])
-                conn.commit()
-                
+                    params.append(organization_name)
+
+                if update_fields:
+                    update_fields.append("updated_at = CURRENT_TIMESTAMP")
+
+                    query = f"""
+                        UPDATE organization_data
+                        SET {', '.join(update_fields)}
+                        WHERE user_id = %s
+                    """
+
+                    cursor.execute(query, params + [user_id])
+                    conn.commit()
+
         except Exception as e:
             logger.error(f"Failed to update organization record for user {user_id}: {e}")
             raise DatabaseError(f"Failed to update organization record: {e}")
-    
-    def reset_organization_record(self, user_id: str) -> None:
-        """Reset organization data record for a user."""
-        try:
-            with self.get_connection() as conn:
-                cursor = conn.cursor()
-                cursor.execute("""
-                    UPDATE organization_data 
-                    SET organization_name = NULL,
-                        service_city = NULL,
-                        contact_info = NULL,
-                        service_target = NULL,
-                        completion_status = 'pending',
-                        raw_messages = NULL,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE user_id = %s
-                """, (user_id,))
-                conn.commit()
-                
-        except Exception as e:
-            logger.error(f"Failed to reset organization record for user {user_id}: {e}")
-            raise DatabaseError(f"Failed to reset organization record: {e}")
     

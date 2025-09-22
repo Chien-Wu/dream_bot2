@@ -361,7 +361,7 @@ class LineService:
             user_msg: User's original message
             confidence: AI confidence score (if any)
             ai_explanation: AI's explanation (if any)
-            notification_type: Type of notification (handover, new_user, org_complete, image)
+            notification_type: Type of notification (handover, new_user, image)
             ai_query: AI query to use as keyword (if any)
         """
         if not self.config.admin_user_id:
@@ -378,7 +378,6 @@ class LineService:
             titles = {
                 "handover": "用戶需要人工協助",
                 "new_user": "新用戶加入",
-                "org_complete": "組織資料完成建檔",
                 "image": "用戶傳送圖片",
                 "low_confidence": "AI回覆信心度偏低"
             }

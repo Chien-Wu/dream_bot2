@@ -51,21 +51,23 @@ CREATE TABLE IF NOT EXISTS ai_detail (
     FOREIGN KEY (message_history_id) REFERENCES message_history(id) ON DELETE CASCADE
 );
 
--- Organization data table
+-- Organization data table (simplified)
 CREATE TABLE IF NOT EXISTS organization_data (
     user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+    username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    service_city VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    contact_info TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    service_target VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    completion_status ENUM('pending', 'partial', 'complete') DEFAULT 'pending',
-    raw_messages TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
-    handover_flag_expires_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_completion_status (completion_status),
-    INDEX idx_created_at (created_at),
-    INDEX idx_handover_flag_expires_at (handover_flag_expires_at)
+    INDEX idx_created_at (created_at)
+);
+
+-- User handover flags table
+CREATE TABLE IF NOT EXISTS user_handover_flags (
+    user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_expires_at (expires_at)
 );
 
 -- Note: ai_explanation column is already included in the CREATE TABLE statement above

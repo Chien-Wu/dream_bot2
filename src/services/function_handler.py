@@ -24,7 +24,6 @@ class FunctionHandler:
     def _register_functions(self) -> Dict[str, Callable]:
         """Register all available functions."""
         return {
-            "get_user_organization_info": self._get_user_organization_info,
             "get_current_datetime": self._get_current_datetime,
             "request_human_handover": self._request_human_handover
         }
@@ -32,25 +31,6 @@ class FunctionHandler:
     def get_function_definitions(self) -> List[Dict[str, Any]]:
         """Get function definitions for the assistant."""
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": "get_user_organization_info",
-                    "description": "獲取用戶的組織基本資料，包括單位全名、服務縣市、聯絡人資訊、服務對象等",
-                    "strict": True,
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "user_id": {
-                                "type": "string",
-                                "description": "用戶的LINE ID"
-                            }
-                        },
-                        "additionalProperties": False,
-                        "required": ["user_id"]
-                    }
-                }
-            },
             {
                 "type": "function",
                 "function": {
@@ -118,27 +98,6 @@ class FunctionHandler:
         except Exception as e:
             logger.error(f"Error executing function {function_name}: {e}")
             return {"error": str(e)}
-    
-    def _get_user_organization_info(self, user_id: str) -> Dict[str, Any]:
-        """Get user's organization information."""
-        try:
-            org_record = self.db.get_organization_record(user_id)
-            
-            if not org_record:
-                return {"message": "用戶尚未提供組織資料"}
-            
-            return {
-                "organization_name": org_record.get("organization_name"),
-                "service_city": org_record.get("service_city"),
-                "contact_info": org_record.get("contact_info"),
-                "service_target": org_record.get("service_target"),
-                "completion_status": org_record.get("completion_status"),
-                "created_at": str(org_record.get("created_at", "")),
-                "updated_at": str(org_record.get("updated_at", ""))
-            }
-            
-        except Exception as e:
-            return {"error": f"無法獲取組織資料: {str(e)}"}
     
     def _request_human_handover(self, user_id: str, reason: str) -> Dict[str, Any]:
         """Request human handover for the user."""

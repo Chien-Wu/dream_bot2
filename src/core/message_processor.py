@@ -9,7 +9,6 @@ from config import config
 from src.utils import setup_logger, log_user_action, MessageProcessingError
 from src.models import Message, AIResponse
 from src.services import DatabaseService, AgentsAPIService, LineService
-from src.services.welcome_flow_manager import WelcomeFlowManager
 from src.services.admin_command_service import AdminCommandService
 from src.services.user_handover_service import UserHandoverService
 from src.core.message_buffer import message_buffer
@@ -21,17 +20,15 @@ logger = setup_logger(__name__)
 class MessageProcessor:
     """Central processor for handling incoming messages."""
     
-    def __init__(self, 
+    def __init__(self,
                  database_service: DatabaseService,
                  agents_api_service: AgentsAPIService,
                  line_service: LineService,
-                 welcome_flow_manager: WelcomeFlowManager,
                  admin_command_service: AdminCommandService,
                  user_handover_service: UserHandoverService):
         self.db = database_service
         self.agents_api_service = agents_api_service
         self.line = line_service
-        self.welcome_flow = welcome_flow_manager
         self.admin_commands = admin_command_service
         self.handover_service = user_handover_service
         
@@ -101,11 +98,13 @@ class MessageProcessor:
                 content_length=len(message.content)
             )
             
+            # Ensure user record exists in organization_data table
+            self._ensure_user_record(message.user_id)
+
             # Chain of responsibility - each handler returns True if it handled the message
             handlers = [
                 self._handle_non_text_messages,
                 self._handle_admin_commands,
-                self._handle_welcome_flow,
                 self._handle_handover_requests,
                 self._handle_ai_response
             ]
@@ -235,44 +234,12 @@ class MessageProcessor:
             )
             return True
     
-    def _handle_welcome_flow(self, message: Message) -> bool:
-        """Handle welcome flow and organization data collection."""
+    def _ensure_user_record(self, user_id: str) -> None:
+        """Ensure user record exists in organization_data table."""
         try:
-            welcome_result = self.welcome_flow.process_message(message.user_id, message.content)
-            
-            if not welcome_result.should_block:
-                return False
-            
-            # Send response message if provided
-            if welcome_result.response_message:
-                self.line.send_message(
-                    message.user_id,
-                    welcome_result.response_message,
-                    message.reply_token
-                )
-            
-            # Notify admin if needed
-            if welcome_result.notify_admin and welcome_result.admin_message:
-                self.line.notify_admin(
-                    user_id=message.user_id,
-                    user_msg=welcome_result.admin_message,
-                    notification_type="org_complete"
-                )
-            
-            # Update user context in ChatGPT if organization data is complete
-            if welcome_result.context_updated:
-                try:
-                    thread_id = self.db.get_user_thread_id(message.user_id)
-                    if thread_id:
-                        self.ai._refresh_user_context(message.user_id, thread_id)
-                except Exception as e:
-                    logger.error(f"Failed to update user context for {message.user_id}: {e}")
-            
-            return True
-            
+            self.db.ensure_user_record(user_id)
         except Exception as e:
-            logger.error(f"Failed to handle welcome flow: {e}")
-            return False
+            logger.error(f"Failed to ensure user record for {user_id}: {e}")
     
     def _handle_handover_requests(self, message: Message) -> bool:
         """Handle requests for human handover."""

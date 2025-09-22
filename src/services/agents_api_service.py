@@ -44,12 +44,7 @@ class AgentsAPIService:
         使用 OpenAI Prompt API 執行單輪對話。
         """
         try:
-            # 如有使用者背景，前置到單一字串
-            user_ctx = self._get_user_context(user_id)
-            if user_ctx:
-                input_text = f"【使用者背景】\n{user_ctx}\n\n【問題】\n{user_input}"
-            else:
-                input_text = user_input
+            input_text = user_input
 
             # 取得用戶上一輪回應ID
             last_response_id = self.db.get_user_thread_id(user_id)
@@ -180,41 +175,5 @@ class AgentsAPIService:
         )
 
     
-    def _get_user_context(self, user_id: str) -> str:
-        try:
-            org_record = self.db.get_organization_record(user_id)
-            if not org_record or org_record.get("completion_status") != "complete":
-                return ""
-            parts = []
-            if org_record.get("organization_name"):
-                parts.append(f"單位全名：{org_record['organization_name']}")
-            if org_record.get("service_city"):
-                parts.append(f"服務縣市：{org_record['service_city']}")
-            if org_record.get("contact_info"):
-                parts.append(f"聯絡人資訊：{org_record['contact_info']}")
-            if org_record.get("service_target"):
-                parts.append(f"服務對象：{org_record['service_target']}")
-            return "\n".join(parts) if parts else ""
-        except Exception as e:
-            logger.error(f"Failed to get user context for {user_id}: {e}")
-            return ""
     
 
-    def _refresh_user_context(self, user_id: str, thread_id: str) -> None:
-        """
-        Refresh user context in existing session.
-        For Prompt API, context is handled per-request.
-        
-        Args:
-            user_id: User's LINE ID
-            thread_id: Thread/Session ID (not used in Prompt API but kept for interface compatibility)
-        """
-        try:
-            user_context = self._get_user_context(user_id)
-            if user_context:
-                logger.info(f"User context refreshed for {user_id}")
-            else:
-                logger.debug(f"No context to refresh for {user_id}")
-                
-        except Exception as e:
-            logger.error(f"Failed to refresh user context for {user_id}: {e}")
