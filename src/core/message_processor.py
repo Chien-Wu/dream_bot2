@@ -11,6 +11,7 @@ from src.models import Message, AIResponse
 from src.services import DatabaseService, AgentsAPIService, LineService
 from src.services.user_handover_service import UserHandoverService
 from src.core.message_buffer import message_buffer
+from src.messages import messages
 
 
 logger = setup_logger(__name__)
@@ -196,7 +197,7 @@ class MessageProcessor:
             
             self.line.send_message(
                 message.user_id,
-                "已為您通知管理者，請稍候。",
+                messages.get_handover_confirmation(),
                 message.reply_token
             )
             

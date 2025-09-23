@@ -19,6 +19,7 @@ from config import config
 from src.utils import setup_logger, LineAPIError
 from src.models import Message
 from src.services.database_service import DatabaseService
+from src.messages import messages
 
 
 logger = setup_logger(__name__)
@@ -118,11 +119,11 @@ class LineService:
         """
         # Pattern to match numbered lists: digit followed by dot and space, or Chinese numbers
         # Matches: "1. ", "2. ", "一、", "二、", etc.
-        numbered_pattern = r'(\d+\.\s+|[一二三四五六七八九十]+[、．]\s*)'
-        
+        chinese_pattern = f'[{messages.messages.CHINESE_NUMBERS}]+[、．]\\s*'
+
         # Add newlines before numbered items, but not at the start of text
         formatted_text = re.sub(r'(?<!^)(?<![\n\r])(\d+\.\s+)', r'\n\1', text)
-        formatted_text = re.sub(r'(?<!^)(?<![\n\r])([一二三四五六七八九十]+[、．]\s*)', r'\n\1', formatted_text)
+        formatted_text = re.sub(f'(?<!^)(?<![\n\r])({chinese_pattern})', r'\n\1', formatted_text)
         
         return formatted_text
     
@@ -372,26 +373,16 @@ class LineService:
             # Get user nickname and organization name
             user_nickname = self.get_user_nickname(user_id)
             org_record = self.db.get_organization_record(user_id)
-            org_name = org_record.get('organization_name', '未設定') if org_record else '未設定'
-            
-            # Set notification title based on type
-            titles = {
-                "handover": "用戶需要人工協助",
-                "new_user": "新用戶加入",
-                "media": "用戶傳送媒體檔案",
-                "low_confidence": "AI回覆信心度偏低",
-                "ai_error": "AI系統發生錯誤"
-            }
-            
-            title = titles.get(notification_type, "用戶需要人工協助")
-            
+            org_name = org_record.get('organization_name', messages.get_organization_placeholder()) if org_record else messages.get_organization_placeholder()
+
+            # Get notification title based on type
+            title = messages.get_admin_notification_title(notification_type)
+
             # Use ai_query as keyword if provided, otherwise use title
             keyword = ai_query if ai_query else title
-            notification_text = f"聯絡人: {user_nickname}({org_name})\n"
-            notification_text += f"用戶訊息: {user_msg}\n"
-            notification_text += f"關鍵字: {keyword}\n"
-            if confidence is not None:
-                notification_text += f"信心度: {confidence:.2f}"
+            notification_text = messages.format_admin_notification(
+                user_nickname, org_name, user_msg, keyword, confidence
+            )
             
             self.push_admin_message(notification_text)
             logger.info(f"Notified admin about user {user_nickname} ({notification_type})")
@@ -460,4 +451,4 @@ class LineService:
         Returns:
             True if handover is requested
         """
-        return message_text.strip() == "轉人工"
+        return messages.is_handover_request(message_text)
