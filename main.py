@@ -10,6 +10,8 @@ from src.utils import setup_logger
 from src.core import container, MessageProcessor
 from src.services import DatabaseService, AgentsAPIService, LineService
 from src.services.user_handover_service import UserHandoverService
+from src.services.google_sheets_service import GoogleSheetsService
+from src.services.sync_scheduler import SyncScheduler
 from src.controllers import WebhookController
 
 
@@ -41,7 +43,10 @@ def create_app() -> Flask:
     
     # Start background cleanup task for handover flags
     start_handover_cleanup_scheduler()
-    
+
+    # Start background sync to Google Sheets (if configured)
+    start_sheets_sync_scheduler()
+
     logger.info("Dream Line Bot initialization completed with all services ready")
     return app
 
@@ -54,6 +59,8 @@ def setup_dependencies():
     container.register_singleton(UserHandoverService)  # Must be before LineService
     container.register_singleton(LineService)
     container.register_singleton(AgentsAPIService)
+    container.register_singleton(GoogleSheetsService)
+    container.register_singleton(SyncScheduler)
     container.register_singleton(MessageProcessor)
 
 
@@ -77,6 +84,42 @@ def start_handover_cleanup_scheduler():
     # Start the first cleanup job
     cleanup_job()
     cleanup_logger.info(f"Started handover flag cleanup scheduler (interval: {config.handover.cleanup_interval_minutes} minutes)")
+
+
+def start_sheets_sync_scheduler():
+    """Start background scheduler for syncing data to Google Sheets."""
+    sync_logger = setup_logger('sheets_sync')
+
+    def sync_job():
+        try:
+            # Check if Google Sheets sync is enabled
+            if not config.google_sheets.enabled:
+                sync_logger.debug("Google Sheets sync is disabled")
+                return
+
+            sync_scheduler = container.resolve(SyncScheduler)
+
+            # Setup sync tracking table if needed
+            sync_scheduler.setup_sync_tracking_table()
+
+            # Perform message history sync
+            success = sync_scheduler.sync_message_history()
+
+            if success:
+                sync_logger.info("Message history sync completed successfully")
+            else:
+                sync_logger.warning("Message history sync failed")
+
+        except Exception as e:
+            sync_logger.error(f"Failed to sync data to Google Sheets: {e}")
+
+        # Schedule next sync
+        sync_interval = config.google_sheets.sync_interval_minutes * 60  # Convert to seconds
+        threading.Timer(sync_interval, sync_job).start()
+
+    # Start the first sync job
+    sync_job()
+    sync_logger.info(f"Started Google Sheets sync scheduler (interval: {config.google_sheets.sync_interval_minutes} minutes)")
 
 
 # Create app instance for Gunicorn (production WSGI server)

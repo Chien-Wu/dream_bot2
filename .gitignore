@@ -178,3 +178,7 @@ safety-report.json
 .claude
 CLAUDE.mdvenv312/
 
+# Google Service Account Credentials
+credentials/
+*.json
+

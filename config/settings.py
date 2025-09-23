@@ -69,6 +69,14 @@ class HandoverConfig:
     cleanup_interval_minutes: int = int(os.getenv('HANDOVER_CLEANUP_INTERVAL_MINUTES', '15'))
 
 
+@dataclass
+class GoogleSheetsConfig:
+    """Google Sheets integration configuration settings."""
+    enabled: bool = os.getenv('GOOGLE_SHEETS_ENABLED', 'False').lower() == 'true'
+    credentials_path: str = os.getenv('GOOGLE_SHEETS_CREDENTIALS_PATH', 'credentials/google-service-account.json')
+    spreadsheet_id: str = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID', '')
+    sync_interval_minutes: int = int(os.getenv('GOOGLE_SHEETS_SYNC_INTERVAL', '10'))
+
 
 @dataclass
 class AppConfig:
@@ -88,6 +96,7 @@ class AppConfig:
     openai: OpenAIConfig = None
     message_buffer: MessageBufferConfig = None
     handover: HandoverConfig = None
+    google_sheets: GoogleSheetsConfig = None
     
     def __post_init__(self):
         self.database = DatabaseConfig()
@@ -95,6 +104,7 @@ class AppConfig:
         self.openai = OpenAIConfig()
         self.message_buffer = MessageBufferConfig()
         self.handover = HandoverConfig()
+        self.google_sheets = GoogleSheetsConfig()
 
 
 # Global configuration instance

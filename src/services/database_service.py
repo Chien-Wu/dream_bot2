@@ -136,6 +136,19 @@ class DatabaseService:
                 cursor.execute(create_messages_sql)
                 cursor.execute(create_organization_sql)
                 cursor.execute(create_handover_sql)
+
+                # Sync tracking table
+                create_sync_tracking_sql = """
+                CREATE TABLE IF NOT EXISTS sync_tracking (
+                    sync_type VARCHAR(50) PRIMARY KEY,
+                    last_sync_time TIMESTAMP NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_sync_type (sync_type),
+                    INDEX idx_last_sync_time (last_sync_time)
+                );
+                """
+                cursor.execute(create_sync_tracking_sql)
                 
                 # Add explanation column if it doesn't exist (for existing installations)
                 cursor.execute("SHOW COLUMNS FROM message_history LIKE 'ai_explanation'")
