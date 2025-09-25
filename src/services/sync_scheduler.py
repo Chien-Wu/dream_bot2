@@ -36,7 +36,7 @@ class SyncScheduler:
                 return False
 
             # Get last sync time from database
-            last_sync = self._get_last_sync_time()
+            last_sync = self._get_last_sync_time("message_history")
 
             # Get new messages since last sync
             new_messages = self._get_new_messages_since(last_sync)
@@ -53,7 +53,7 @@ class SyncScheduler:
 
             if success:
                 # Update last sync time
-                self._update_last_sync_time()
+                self._update_last_sync_time("message_history")
                 logger.info(f"Successfully synced {len(new_messages)} messages to Google Sheets")
             else:
                 logger.error("Failed to sync messages to Google Sheets")
@@ -64,13 +64,83 @@ class SyncScheduler:
             logger.error(f"Error during message history sync: {e}")
             return False
 
-    def _get_last_sync_time(self) -> Optional[datetime]:
+    def sync_organization_data(self) -> bool:
+        """
+        Sync new organization data records to Google Sheets.
+
+        Returns:
+            True if sync was successful, False otherwise
+        """
+        try:
+            logger.info("Starting organization data sync to Google Sheets")
+
+            # Ensure sheet exists and is set up
+            if not self.sheets.setup_organization_data_sheet():
+                logger.error("Failed to setup organization data sheet")
+                return False
+
+            # Get last sync time from database
+            last_sync = self._get_last_sync_time("organization_data")
+
+            # Get new/updated organizations since last sync
+            updated_organizations = self._get_updated_organizations_since(last_sync)
+
+            if not updated_organizations:
+                logger.info("No organization data to sync")
+                return True
+
+            # Sync to Google Sheets
+            success = self.sheets.sync_organization_data(updated_organizations)
+
+            if success:
+                # Update last sync time
+                self._update_last_sync_time("organization_data")
+                logger.info(f"Successfully synced {len(updated_organizations)} organizations to Google Sheets")
+            else:
+                logger.error("Failed to sync organizations to Google Sheets")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error during organization data sync: {e}")
+            return False
+
+    def sync_all_data(self) -> bool:
+        """
+        Sync both message history and organization data to Google Sheets.
+
+        Returns:
+            True if both syncs were successful, False otherwise
+        """
+        try:
+            logger.info("Starting full data sync to Google Sheets")
+
+            # Sync message history
+            message_success = self.sync_message_history()
+
+            # Sync organization data
+            org_success = self.sync_organization_data()
+
+            success = message_success and org_success
+
+            if success:
+                logger.info("Full data sync completed successfully")
+            else:
+                logger.warning("Full data sync completed with some failures")
+
+            return success
+
+        except Exception as e:
+            logger.error(f"Error during full data sync: {e}")
+            return False
+
+    def _get_last_sync_time(self, sync_type: str = "message_history") -> Optional[datetime]:
         """Get the last sync timestamp from database."""
         try:
             # Query sync tracking table
             result = self.db.execute_query(
                 "SELECT last_sync_time FROM sync_tracking WHERE sync_type = %s",
-                params=('message_history',),
+                params=(sync_type,),
                 fetch_one=True
             )
 
@@ -116,6 +186,34 @@ class SyncScheduler:
             logger.error(f"Failed to get new messages: {e}")
             return []
 
+    def _get_updated_organizations_since(self, since_time: datetime) -> List[Dict[str, Any]]:
+        """Get updated organization records since the given time."""
+        try:
+            query = """
+                SELECT
+                    user_id,
+                    organization_name,
+                    reminded_count,
+                    created_at,
+                    updated_at
+                FROM organization_data
+                WHERE updated_at > %s
+                ORDER BY updated_at ASC
+                LIMIT 1000
+            """
+
+            organizations = self.db.execute_query(
+                query,
+                params=(since_time,),
+                fetch_all=True
+            )
+
+            return organizations or []
+
+        except Exception as e:
+            logger.error(f"Failed to get updated organizations: {e}")
+            return []
+
     def _enrich_messages_with_user_data(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich messages with user organization data."""
         try:
@@ -142,7 +240,7 @@ class SyncScheduler:
             logger.error(f"Failed to enrich messages with user data: {e}")
             return messages
 
-    def _update_last_sync_time(self) -> None:
+    def _update_last_sync_time(self, sync_type: str = "message_history") -> None:
         """Update the last sync time in database."""
         try:
             current_time = datetime.now()
@@ -153,13 +251,13 @@ class SyncScheduler:
                 ON DUPLICATE KEY UPDATE
                 last_sync_time = VALUES(last_sync_time),
                 updated_at = VALUES(updated_at)
-            """, params=('message_history', current_time, current_time))
+            """, params=(sync_type, current_time, current_time))
 
             self.last_sync_time = current_time
-            logger.debug(f"Updated last sync time to {current_time}")
+            logger.debug(f"Updated last sync time for {sync_type} to {current_time}")
 
         except Exception as e:
-            logger.error(f"Failed to update last sync time: {e}")
+            logger.error(f"Failed to update last sync time for {sync_type}: {e}")
 
     def setup_sync_tracking_table(self) -> bool:
         """Set up the sync tracking table if it doesn't exist."""

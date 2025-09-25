@@ -77,7 +77,7 @@ class MessageManager:
                                  user_msg: str, keyword: str,
                                  confidence: float = None) -> str:
         """Format admin notification message."""
-        notification_text = f"{self.messages.ADMIN_NOTIFICATION_CONTACT}: {user_nickname}({org_name})\n"
+        notification_text = f"{self.messages.ADMIN_NOTIFICATION_CONTACT}: {org_name}({user_nickname})\n"
         notification_text += f"{self.messages.ADMIN_NOTIFICATION_USER_MESSAGE}: {user_msg}\n"
         notification_text += f"{self.messages.ADMIN_NOTIFICATION_KEYWORD}: {keyword}\n"
 

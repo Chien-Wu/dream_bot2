@@ -106,6 +106,55 @@ class GoogleSheetsService:
             logger.error(f"Failed to setup message history sheet: {e}")
             return False
 
+    def setup_organization_data_sheet(self, sheet_name: str = "OrganizationData") -> bool:
+        """
+        Set up the organization data sheet with proper headers.
+
+        Args:
+            sheet_name: Name of the sheet to create/update
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected():
+            logger.error("Google Sheets service not connected")
+            return False
+
+        try:
+            # Define headers for organization data
+            headers = [
+                'User ID',
+                'Organization Name',
+                'Reminded Count',
+                'Created At',
+                'Updated At'
+            ]
+
+            # Check if sheet exists, create if not
+            self._ensure_sheet_exists(sheet_name)
+
+            # Update headers
+            range_name = f"{sheet_name}!A1:E1"
+            values = [headers]
+
+            body = {
+                'values': values
+            }
+
+            result = self.service.spreadsheets().values().update(
+                spreadsheetId=config.google_sheets.spreadsheet_id,
+                range=range_name,
+                valueInputOption='RAW',
+                body=body
+            ).execute()
+
+            logger.info(f"Organization data sheet '{sheet_name}' setup completed")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to setup organization data sheet: {e}")
+            return False
+
     def sync_message_history(self, messages: List[Dict[str, Any]], sheet_name: str = "MessageHistory") -> bool:
         """
         Sync message history data to Google Sheets.
@@ -170,6 +219,60 @@ class GoogleSheetsService:
 
         except Exception as e:
             logger.error(f"Failed to sync messages to Google Sheets: {e}")
+            return False
+
+    def sync_organization_data(self, organizations: List[Dict[str, Any]], sheet_name: str = "OrganizationData") -> bool:
+        """
+        Sync organization data to Google Sheets.
+
+        Args:
+            organizations: List of organization dictionaries to sync
+            sheet_name: Name of the sheet to sync to
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.is_connected():
+            logger.error("Google Sheets service not connected")
+            return False
+
+        if not organizations:
+            logger.debug("No organizations to sync")
+            return True
+
+        try:
+            # Convert organizations to sheet format
+            rows = []
+            for org in organizations:
+                row = [
+                    str(org.get('user_id', '')),                    # User ID
+                    str(org.get('organization_name', '')),          # Organization Name
+                    int(org.get('reminded_count', 0)),              # Reminded Count
+                    str(org.get('created_at', '')),                 # Created At
+                    str(org.get('updated_at', ''))                  # Updated At
+                ]
+                rows.append(row)
+
+            # Append to sheet
+            range_name = f"{sheet_name}!A:E"
+
+            body = {
+                'values': rows
+            }
+
+            result = self.service.spreadsheets().values().append(
+                spreadsheetId=config.google_sheets.spreadsheet_id,
+                range=range_name,
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+
+            logger.info(f"Successfully synced {len(organizations)} organizations to Google Sheets")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to sync organizations to Google Sheets: {e}")
             return False
 
     def _ensure_sheet_exists(self, sheet_name: str) -> bool:

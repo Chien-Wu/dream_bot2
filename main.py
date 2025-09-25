@@ -102,13 +102,13 @@ def start_sheets_sync_scheduler():
             # Setup sync tracking table if needed
             sync_scheduler.setup_sync_tracking_table()
 
-            # Perform message history sync
-            success = sync_scheduler.sync_message_history()
+            # Perform sync for both message history and organization data
+            success = sync_scheduler.sync_all_data()
 
             if success:
-                sync_logger.info("Message history sync completed successfully")
+                sync_logger.info("Data sync completed successfully")
             else:
-                sync_logger.warning("Message history sync failed")
+                sync_logger.warning("Data sync failed")
 
         except Exception as e:
             sync_logger.error(f"Failed to sync data to Google Sheets: {e}")
