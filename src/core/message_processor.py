@@ -4,6 +4,7 @@ Central message processor that coordinates all message handling.
 import time
 import threading
 from typing import Optional
+import openai
 
 from config import config
 from src.utils import setup_logger, log_user_action, MessageProcessingError
@@ -39,25 +40,68 @@ class MessageProcessor:
     
     def process_message(self, message: Message) -> None:
         """
-        Process an incoming message with queue management and buffering.
-        
+        Process an incoming message with organization collection flow.
+
         Args:
             message: Incoming message to process
         """
-        # Only buffer text messages - handle media messages immediately
-        if message.message_type == "text":
-            # Try to buffer the message if it's short and incomplete
-            if message_buffer.add_message(message):
-                logger.debug(f"Message buffered for user {message.user_id}")
-                return
+        user_id = message.user_id
 
-        # Process immediately (non-text messages or unbuffered text messages)
-        # Start processing in background thread to avoid blocking
-        threading.Thread(
-            target=self._handle_single_message,
-            args=(message,),
-            daemon=True
-        ).start()
+        # 1. FIRST: Check if there's any record, if not, instantly build empty row
+        self._ensure_user_record(user_id)
+
+        # 2. SECOND: Check if there is organization_name
+        org_record = self.db.get_organization_record(user_id)
+        if org_record and org_record.get('organization_name'):
+            # Has org_name → skip the rest, get into message buffer (EXISTING LOGIC)
+            if message.message_type == "text":
+                if message_buffer.add_message(message):
+                    logger.debug(f"Message buffered for user {user_id}")
+                    return
+
+            # Process immediately (non-text messages or unbuffered text messages)
+            threading.Thread(
+                target=self._handle_single_message,
+                args=(message,),
+                daemon=True
+            ).start()
+            return
+
+        # 3. THIRD: Check if reminded_count is 0
+        reminded_count = org_record.get('reminded_count', 0) if org_record else 0
+        if reminded_count == 0:
+            # Reply with request_org_name_msg, add 1 to reminded_count, skip the rest
+            request_msg = messages.get_org_request_message(reminded_count)
+            self.line.send_message(user_id, request_msg, message.reply_token)
+            self.db.increment_reminded_count(user_id)
+            logger.info(f"Sent organization request to user {user_id} (attempt {reminded_count + 1})")
+            return
+
+        # 4. If not 0: Go through org_name extractor
+        extracted_org = self._extract_organization_name(message.content)
+        if extracted_org.lower() != "none":
+            # Found org_name → save it and reply with success message
+            self.db.update_organization_record(user_id, organization_name=extracted_org)
+            # Keep reminded_count as is (don't reset to 0)
+
+            # Notify admin about successful organization registration
+            self.line.notify_admin(
+                user_id=user_id,
+                user_msg=f"組織名稱: {extracted_org}",
+                notification_type="org_registered"
+            )
+
+            success_msg = messages.get_org_success_message()
+            self.line.send_message(user_id, success_msg, message.reply_token)
+            logger.info(f"Successfully extracted and saved organization '{extracted_org}' for user {user_id} (after {reminded_count + 1} attempts)")
+            return
+        else:
+            # Extraction failed → ask again, increment count
+            request_msg = messages.get_org_request_message(reminded_count)
+            self.line.send_message(user_id, request_msg, message.reply_token)
+            self.db.increment_reminded_count(user_id)
+            logger.info(f"Organization extraction failed for user {user_id}, asking again (attempt {reminded_count + 1})")
+            return
     
     
     def _handle_single_message(self, message: Message) -> None:
@@ -90,9 +134,6 @@ class MessageProcessor:
                 content_length=len(message.content)
             )
             
-            # Ensure user record exists in organization_data table
-            self._ensure_user_record(message.user_id)
-
             # Chain of responsibility - each handler returns True if it handled the message
             handlers = [
                 self._handle_media_messages,
@@ -179,7 +220,7 @@ class MessageProcessor:
             self.db.ensure_user_record(user_id)
         except Exception as e:
             logger.error(f"Failed to ensure user record for {user_id}: {e}")
-    
+
     def _handle_handover_requests(self, message: Message) -> bool:
         """Handle requests for human handover."""
         if not self.line.is_handover_request(message.content):
@@ -350,6 +391,40 @@ class MessageProcessor:
             return True
     
     
+    def _extract_organization_name(self, user_message: str) -> str:
+        """
+        Extract organization name from user message using OpenAI.
+
+        Args:
+            user_message: User's message containing organization info
+
+        Returns:
+            Organization name or "none" if extraction failed
+        """
+        try:
+            # Initialize OpenAI client
+            client = openai.OpenAI(api_key=config.openai.api_key)
+
+            # Call OpenAI for extraction
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[
+                    {"role": "system", "content": messages.get_org_extraction_prompt()},
+                    {"role": "user", "content": user_message}
+                ],
+                max_tokens=100,
+                temperature=0.1
+            )
+
+            extracted_name = response.choices[0].message.content.strip()
+            logger.info(f"OpenAI extraction result: '{extracted_name}'")
+
+            return extracted_name
+
+        except Exception as e:
+            logger.error(f"Failed to extract organization name: {e}")
+            return "none"
+
     def _send_error_response(self, user_id: str, reply_token: str = None) -> None:
         """Send error response to user."""
         try:

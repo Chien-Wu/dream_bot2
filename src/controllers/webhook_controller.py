@@ -72,8 +72,11 @@ class WebhookController:
 
                 log_user_action(logger, user_id, "user_followed")
 
-                # User record will be created automatically when they send their first message
-                # No special onboarding flow needed
+                # Create org_data row with org_name as None and reminded_count as 1
+                self.processor.db.ensure_user_record(user_id)
+                self.processor.db.increment_reminded_count(user_id)
+
+                logger.info(f"Created org_data record for new user {user_id} with reminded_count=1")
 
             except Exception as e:
                 logger.error(f"Error handling follow event: {e}")

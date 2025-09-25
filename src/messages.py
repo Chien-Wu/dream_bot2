@@ -15,6 +15,7 @@ class Messages:
     ADMIN_NOTIFICATION_MEDIA = "用戶傳送媒體檔案"
     ADMIN_NOTIFICATION_LOW_CONFIDENCE = "AI回覆信心度偏低"
     ADMIN_NOTIFICATION_AI_ERROR = "AI系統發生錯誤"
+    ADMIN_NOTIFICATION_ORG_REGISTERED = "用戶完成組織註冊"
     ADMIN_NOTIFICATION_DEFAULT = "用戶需要人工協助"
 
     # Admin notification content
@@ -31,6 +32,16 @@ class Messages:
 
     # User response messages
     HANDOVER_CONFIRMATION = "已為您通知管理者，請稍候。"
+
+    # Organization collection messages
+    ORG_REQUEST_MESSAGE = ["您好，我是一起夢想 AI 小助手，請先回覆【單位全名】，我會再協助您的需求", "麻煩您先幫我回覆【單位全名】，我才能幫您處理或轉人工～", "請先回覆【單位全名】，啟用 AI 客服，避免重複提醒"]
+    ORG_SUCCESS_MESSAGE = "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
+
+    # System prompt for organization name extraction
+    ORG_EXTRACTION_SYSTEM_PROMPT = """你是社會福利機構名稱提取助手。用戶會提供組織資訊，請提取組織名稱。
+如果能清楚識別組織名稱，返回組織名稱。
+如果無法清楚識別，返回 "none"。
+只返回組織名稱或 "none"，嚴禁其他解釋。"""
 
     # Chinese number patterns for text formatting
     CHINESE_NUMBERS = "一二三四五六七八九十"
@@ -57,7 +68,8 @@ class MessageManager:
             "new_user": self.messages.ADMIN_NOTIFICATION_NEW_USER,
             "media": self.messages.ADMIN_NOTIFICATION_MEDIA,
             "low_confidence": self.messages.ADMIN_NOTIFICATION_LOW_CONFIDENCE,
-            "ai_error": self.messages.ADMIN_NOTIFICATION_AI_ERROR
+            "ai_error": self.messages.ADMIN_NOTIFICATION_AI_ERROR,
+            "org_registered": self.messages.ADMIN_NOTIFICATION_ORG_REGISTERED
         }
         return titles.get(notification_type, self.messages.ADMIN_NOTIFICATION_DEFAULT)
 
@@ -85,6 +97,21 @@ class MessageManager:
     def get_handover_confirmation(self) -> str:
         """Get handover confirmation message."""
         return self.messages.HANDOVER_CONFIRMATION
+
+    def get_org_request_message(self, attempt_count: int = 0) -> str:
+        """Get organization name request message based on attempt count."""
+        messages_list = self.messages.ORG_REQUEST_MESSAGE
+        # Use the attempt count as index, but cap at the last message
+        index = min(attempt_count, len(messages_list) - 1)
+        return messages_list[index]
+
+    def get_org_success_message(self) -> str:
+        """Get organization name success message."""
+        return self.messages.ORG_SUCCESS_MESSAGE
+
+    def get_org_extraction_prompt(self) -> str:
+        """Get organization name extraction system prompt."""
+        return self.messages.ORG_EXTRACTION_SYSTEM_PROMPT
 
 
 # Global message manager instance

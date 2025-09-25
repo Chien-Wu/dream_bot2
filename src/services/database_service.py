@@ -114,6 +114,7 @@ class DatabaseService:
                 CREATE TABLE IF NOT EXISTS organization_data (
                     user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
                     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
+                    reminded_count INT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_created_at (created_at)
@@ -218,6 +219,12 @@ class DatabaseService:
                     logger.info("Removing deprecated username column...")
                     cursor.execute("ALTER TABLE organization_data DROP COLUMN username")
                     logger.info("Username column removed successfully")
+
+                # Add reminded_count column if it doesn't exist
+                if 'reminded_count' not in existing_columns:
+                    logger.info("Adding reminded_count column...")
+                    cursor.execute("ALTER TABLE organization_data ADD COLUMN reminded_count INT DEFAULT 0")
+                    logger.info("Reminded_count column added successfully")
                 else:
                     logger.info("Organization data table already uses simplified schema")
                 
@@ -418,4 +425,51 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to update organization record for user {user_id}: {e}")
             raise DatabaseError(f"Failed to update organization record: {e}")
-    
+
+    def increment_reminded_count(self, user_id: str) -> None:
+        """Increment reminded_count for user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE organization_data
+                    SET reminded_count = reminded_count + 1, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, (user_id,))
+                conn.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to increment reminded count for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to increment reminded count: {e}")
+
+    def reset_reminded_count(self, user_id: str) -> None:
+        """Reset reminded_count to 0 for user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE organization_data
+                    SET reminded_count = 0, updated_at = CURRENT_TIMESTAMP
+                    WHERE user_id = %s
+                """, (user_id,))
+                conn.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to reset reminded count for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to reset reminded count: {e}")
+
+    def get_reminded_count(self, user_id: str) -> int:
+        """Get current reminded_count for user."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT reminded_count FROM organization_data WHERE user_id = %s
+                """, (user_id,))
+                result = cursor.fetchone()
+                return result[0] if result else 0
+
+        except Exception as e:
+            logger.error(f"Failed to get reminded count for user {user_id}: {e}")
+            raise DatabaseError(f"Failed to get reminded count: {e}")
+
