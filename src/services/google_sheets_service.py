@@ -72,7 +72,6 @@ class GoogleSheetsService:
             headers = [
                 'Timestamp',
                 'User ID',
-                'Username',
                 'Organization',
                 'Message Type',
                 'User Message',
@@ -86,7 +85,7 @@ class GoogleSheetsService:
             self._ensure_sheet_exists(sheet_name)
 
             # Update headers
-            range_name = f"{sheet_name}!A1:J1"
+            range_name = f"{sheet_name}!A1:I1"
             values = [headers]
 
             body = {
@@ -141,7 +140,6 @@ class GoogleSheetsService:
                 row = [
                     datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
                     str(msg.get('user_id', '')),                   # User ID
-                    str(msg.get('username', '')),                  # Username
                     str(msg.get('organization_name', '')),         # Organization
                     str(msg.get('message_type', 'text')),          # Message Type
                     str(msg.get('content', '')),                   # User Message
@@ -153,7 +151,7 @@ class GoogleSheetsService:
                 rows.append(row)
 
             # Append to sheet
-            range_name = f"{sheet_name}!A:J"
+            range_name = f"{sheet_name}!A:I"
 
             body = {
                 'values': rows

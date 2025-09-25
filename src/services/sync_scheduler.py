@@ -130,10 +130,8 @@ class SyncScheduler:
                 # Add organization data to message
                 enriched_msg = msg.copy()
                 if org_data:
-                    enriched_msg['username'] = org_data.get('username', '')
                     enriched_msg['organization_name'] = org_data.get('organization_name', '')
                 else:
-                    enriched_msg['username'] = ''
                     enriched_msg['organization_name'] = ''
 
                 enriched.append(enriched_msg)

@@ -113,7 +113,6 @@ class DatabaseService:
                 create_organization_sql = """
                 CREATE TABLE IF NOT EXISTS organization_data (
                     user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
-                    username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -200,12 +199,8 @@ class DatabaseService:
                 if 'completion_status' in existing_columns:
                     logger.info("Migrating organization_data table to simplified schema...")
 
-                    # Add username column if it doesn't exist
-                    if 'username' not in existing_columns:
-                        cursor.execute("ALTER TABLE organization_data ADD COLUMN username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-
-                    # Drop old columns that are no longer needed
-                    old_columns = ['service_city', 'contact_info', 'service_target', 'completion_status', 'raw_messages', 'handover_flag_expires_at']
+                    # Drop old columns that are no longer needed (including username)
+                    old_columns = ['username', 'service_city', 'contact_info', 'service_target', 'completion_status', 'raw_messages', 'handover_flag_expires_at']
                     for col in old_columns:
                         if col in existing_columns:
                             cursor.execute(f"ALTER TABLE organization_data DROP COLUMN {col}")
@@ -219,6 +214,10 @@ class DatabaseService:
                             cursor.execute(f"DROP INDEX {idx} ON organization_data")
 
                     logger.info("Organization data table migration completed")
+                elif 'username' in existing_columns:
+                    logger.info("Removing deprecated username column...")
+                    cursor.execute("ALTER TABLE organization_data DROP COLUMN username")
+                    logger.info("Username column removed successfully")
                 else:
                     logger.info("Organization data table already uses simplified schema")
                 
@@ -390,8 +389,7 @@ class DatabaseService:
             logger.error(f"Failed to get organization record for user {user_id}: {e}")
             raise DatabaseError(f"Failed to retrieve organization record: {e}")
 
-    def update_organization_record(self, user_id: str, username: str = None,
-                                 organization_name: str = None) -> None:
+    def update_organization_record(self, user_id: str, organization_name: str = None) -> None:
         """Update organization data record."""
         try:
             with self.get_connection() as conn:
@@ -400,10 +398,6 @@ class DatabaseService:
                 # Build update query based on provided data
                 update_fields = []
                 params = []
-
-                if username is not None:
-                    update_fields.append("username = %s")
-                    params.append(username)
 
                 if organization_name is not None:
                     update_fields.append("organization_name = %s")
