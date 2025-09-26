@@ -64,17 +64,19 @@ class MessageProcessor:
             ).start()
             return
 
-        # 3. THIRD: Check if reminded_count is 0
+        # 2. Check if reminded_count is 0
         reminded_count = org_record.get('reminded_count', 0) if org_record else 0
+        is_new_user = org_record.get('is_new', False) if org_record else False
+
         if reminded_count == 0:
             # Reply with request_org_name_msg, add 1 to reminded_count, skip the rest
             request_msg = messages.get_org_request_message(reminded_count)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
-            logger.info(f"Sent organization request to user {user_id} (attempt {reminded_count + 1})")
+            logger.info(f"Sent organization request to user {user_id} (attempt {reminded_count + 1}, is_new={is_new_user})")
             return
 
-        # 4. If not 0: Go through org_name extractor
+        # 3. If not 0: Go through org_name extractor
         extracted_org = self._extract_organization_name(message.content)
         if extracted_org.lower() != "none":
             # Found org_name → save it and reply with success message
@@ -90,14 +92,14 @@ class MessageProcessor:
 
             success_msg = messages.get_org_success_message()
             self.line.send_message(user_id, success_msg, message.reply_token)
-            logger.info(f"Successfully extracted and saved organization '{extracted_org}' for user {user_id} (after {reminded_count + 1} attempts)")
+            logger.info(f"Successfully extracted and saved organization '{extracted_org}' for user {user_id} (after {reminded_count + 1} attempts, is_new={is_new_user})")
             return
         else:
             # Extraction failed → ask again, increment count
             request_msg = messages.get_org_request_message(reminded_count)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
-            logger.info(f"Organization extraction failed for user {user_id}, asking again (attempt {reminded_count + 1})")
+            logger.info(f"Organization extraction failed for user {user_id}, asking again (attempt {reminded_count + 1}, is_new={is_new_user})")
             return
     
     
@@ -131,9 +133,12 @@ class MessageProcessor:
                 content_length=len(message.content)
             )
             
+            # Ensure user record exists in organization_data table
+            self._ensure_user_record(message.user_id)
+
             # Chain of responsibility - each handler returns True if it handled the message
             handlers = [
-                self._handle_media_messages,
+                self._handle_non_text_messages,
                 self._handle_handover_requests,
                 self._handle_ai_response
             ]
@@ -191,9 +196,9 @@ class MessageProcessor:
             logger.error(f"Failed to process buffered message for user {user_id}: {e}")
             self._send_error_response(user_id, reply_token)
     
-    def _handle_media_messages(self, message: Message) -> bool:
-        """Handle media messages (images, videos, audio, files)."""
-        if message.message_type == "media":
+    def _handle_non_text_messages(self, message: Message) -> bool:
+        """Handle non-text messages (images, videos, audio, files)."""
+        if message.message_type in ["image", "video", "audio", "file"]:
             try:
                 self.line.notify_admin(
                     user_id=message.user_id,
@@ -208,6 +213,10 @@ class MessageProcessor:
                 logger.error(f"Failed to handle media message: {e}")
                 return True
 
+        if message.message_type != "text":
+            logger.debug(f"Ignoring message type: {message.message_type}")
+            return True
+
         return False
     
     
@@ -217,7 +226,7 @@ class MessageProcessor:
             self.db.ensure_user_record(user_id)
         except Exception as e:
             logger.error(f"Failed to ensure user record for {user_id}: {e}")
-
+    
     def _handle_handover_requests(self, message: Message) -> bool:
         """Handle requests for human handover."""
         if not self.line.is_handover_request(message.content):
@@ -235,7 +244,7 @@ class MessageProcessor:
             
             self.line.send_message(
                 message.user_id,
-                messages.get_handover_confirmation(),
+                "已為您通知管理者，請稍候。",
                 message.reply_token
             )
             
@@ -308,85 +317,11 @@ class MessageProcessor:
             return True
             
         except Exception as e:
-            logger.error(f"AI API failed for user {message.user_id}: {e}")
+            logger.error(f"Failed to get AI response for user {message.user_id}: {e}")
             import traceback
             logger.error(f"AI response error traceback: {traceback.format_exc()}")
-
-            # Check if it's a thread-related error that needs reset
-            error_str = str(e).lower()
-            if any(keyword in error_str for keyword in ["previous_response_not_found", "thread", "session", "conversation", "previous_response_id"]):
-                logger.info(f"Resetting thread for user {message.user_id} due to thread error")
-                try:
-                    # Reset user's thread
-                    self.db.reset_user_thread(message.user_id)
-
-                    # Try once more with fresh thread
-                    ai_response = self.ai.get_response(message.user_id, message.content)
-
-                    # If successful, process normally
-                    if ai_response.needs_human_review:
-                        logger.info(f"Low confidence AI response for user {message.user_id}, notifying admin silently")
-                        try:
-                            ai_query = None
-                            if ai_response.queries and len(ai_response.queries) > 0:
-                                first_query = ai_response.queries[0]
-                                if isinstance(first_query, dict) and "q" in first_query:
-                                    ai_query = first_query["q"]
-
-                            self.line.notify_admin(
-                                user_id=message.user_id,
-                                user_msg=message.content,
-                                confidence=ai_response.confidence,
-                                ai_explanation=ai_response.explanation,
-                                notification_type="low_confidence",
-                                ai_query=ai_query
-                            )
-                        except Exception as e:
-                            logger.error(f"Failed to notify admin: {e}")
-                        logger.debug(f"Silent handling for low confidence response to user {message.user_id}")
-                    else:
-                        logger.debug(f"Sending high confidence AI response to user {message.user_id}")
-                        self.line.send_message(message.user_id, ai_response.text, message.reply_token)
-
-                    # Push debug info separately if enabled
-                    if config.show_ai_debug_info:
-                        debug_info = "🔧 AI詳細資訊：\n"
-                        if ai_response.explanation:
-                            debug_info += f"AI說明：\n{ai_response.explanation}\n"
-                        debug_info += f"信心度：{ai_response.confidence:.2f}"
-
-                        # Push debug info as separate message
-                        time.sleep(0.5)  # Small delay to ensure proper message order
-                        self.line.push_message(message.user_id, debug_info)
-
-                    log_user_action(
-                        logger,
-                        message.user_id,
-                        "message_processed",
-                        confidence=ai_response.confidence,
-                        needs_review=ai_response.needs_human_review
-                    )
-
-                    return True
-
-                except Exception as retry_error:
-                    logger.error(f"Retry after thread reset also failed for user {message.user_id}: {retry_error}")
-                    # Fall through to admin notification
-
-            # Notify admin about AI error - no user response
-            try:
-                self.line.notify_admin(
-                    user_id=message.user_id,
-                    user_msg=message.content,
-                    notification_type="ai_error",
-                    ai_explanation=f"AI API Error: {str(e)}"
-                )
-            except Exception as admin_error:
-                logger.error(f"Failed to notify admin about AI error: {admin_error}")
-
-            # Silent failure - no response to user
+            self._send_error_response(message.user_id, message.reply_token)
             return True
-    
     
     def _extract_organization_name(self, user_message: str) -> str:
         """
@@ -429,15 +364,15 @@ class MessageProcessor:
             self.line.send_message(user_id, error_response, reply_token)
         except Exception as e:
             logger.error(f"Failed to send error response: {e}")
-    
+
     def _handle_processing_error(self, message: Message, error: Exception) -> None:
         """Handle errors during message processing."""
         self._send_error_response(message.user_id, message.reply_token)
-        
+
         # Log the error with context
         from src.utils import log_error_with_context
         log_error_with_context(
-            logger, 
+            logger,
             error,
             {
                 'user_id': message.user_id,

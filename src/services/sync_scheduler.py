@@ -200,6 +200,7 @@ class SyncScheduler:
                     user_id,
                     organization_name,
                     reminded_count,
+                    is_new,
                     created_at,
                     updated_at
                 FROM organization_data

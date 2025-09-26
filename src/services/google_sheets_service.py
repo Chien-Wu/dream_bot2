@@ -126,6 +126,7 @@ class GoogleSheetsService:
                 'User ID',
                 'Organization Name',
                 'Reminded Count',
+                'Is New User',
                 'Created At',
                 'Updated At'
             ]
@@ -134,7 +135,7 @@ class GoogleSheetsService:
             self._ensure_sheet_exists(sheet_name)
 
             # Update headers
-            range_name = f"{sheet_name}!A1:E1"
+            range_name = f"{sheet_name}!A1:F1"
             values = [headers]
 
             body = {
@@ -244,17 +245,19 @@ class GoogleSheetsService:
             # Convert organizations to sheet format
             rows = []
             for org in organizations:
+                is_new_user = org.get('is_new', False)
                 row = [
                     str(org.get('user_id', '')),                    # User ID
                     str(org.get('organization_name', '')),          # Organization Name
                     int(org.get('reminded_count', 0)),              # Reminded Count
+                    'Yes' if is_new_user else 'No',                # Is New User (human readable)
                     str(org.get('created_at', '')),                 # Created At
                     str(org.get('updated_at', ''))                  # Updated At
                 ]
                 rows.append(row)
 
             # Append to sheet
-            range_name = f"{sheet_name}!A:E"
+            range_name = f"{sheet_name}!A:F"
 
             body = {
                 'values': rows

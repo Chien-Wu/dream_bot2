@@ -115,6 +115,7 @@ class DatabaseService:
                     user_id VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci PRIMARY KEY,
                     organization_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
                     reminded_count INT DEFAULT 0,
+                    is_new BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_created_at (created_at),
@@ -239,6 +240,14 @@ class DatabaseService:
                     logger.info("idx_updated_at index added successfully")
                 else:
                     logger.info("idx_updated_at index already exists")
+
+                # Add is_new column if it doesn't exist
+                if 'is_new' not in existing_columns:
+                    logger.info("Adding is_new column...")
+                    cursor.execute("ALTER TABLE organization_data ADD COLUMN is_new BOOLEAN DEFAULT FALSE")
+                    logger.info("is_new column added successfully")
+                else:
+                    logger.info("is_new column already exists")
                 
                 conn.commit()
                 
@@ -400,10 +409,10 @@ class DatabaseService:
                 cursor = conn.cursor(pymysql.cursors.DictCursor)
 
                 if ensure_exists:
-                    # Ensure record exists first (without updating timestamp if already exists)
+                    # Ensure record exists first (set is_new=FALSE for existing users who send direct messages)
                     cursor.execute("""
-                        INSERT INTO organization_data (user_id)
-                        VALUES (%s)
+                        INSERT INTO organization_data (user_id, is_new)
+                        VALUES (%s, FALSE)
                         ON DUPLICATE KEY UPDATE user_id = user_id
                     """, (user_id,))
 
@@ -484,13 +493,13 @@ class DatabaseService:
             raise DatabaseError(f"Failed to reset reminded count: {e}")
 
     def create_user_with_initial_reminder(self, user_id: str) -> None:
-        """Create user record with reminded_count=1 atomically (for new user follow events)."""
+        """Create user record with reminded_count=1 and is_new=TRUE atomically (for new user follow events)."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    INSERT INTO organization_data (user_id, reminded_count)
-                    VALUES (%s, 1)
+                    INSERT INTO organization_data (user_id, reminded_count, is_new)
+                    VALUES (%s, 1, TRUE)
                     ON DUPLICATE KEY UPDATE
                     reminded_count = reminded_count + 1,
                     updated_at = CURRENT_TIMESTAMP

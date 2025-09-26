@@ -33,22 +33,30 @@ class Messages:
     # User response messages
     HANDOVER_CONFIRMATION = "已為您通知管理者，請稍候。"
 
-    # Organization collection messages
-    ORG_REQUEST_MESSAGE = ["您好，我是一起夢想 AI 小助手，請先回覆【單位全名】，我會再協助您的需求", "麻煩您先幫我回覆【單位全名】，我才能幫您處理或轉人工～", "請先回覆【單位全名】，啟用 AI 客服，避免重複提醒"]
+    # Organization collection messages - NEW USERS (is_new = TRUE)
+    ORG_REQUEST_MESSAGE_NEW = ["歡迎加入一起夢想！我是 AI 小助手，請先回覆【單位全名】，我會協助您的需求", "麻煩先提供【單位全名】，啟用AI客服功能", "請提供【單位全名】完成註冊，開始使用AI協助服務"]
+    ORG_SUCCESS_MESSAGE_NEW = "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
+
+    # Organization collection messages - EXISTING USERS (is_new = FALSE)
+    ORG_REQUEST_MESSAGE_EXISTING = ["您好，我是一起夢想 AI 小助手，請先回覆【單位全名】，我會再協助您的需求", "麻煩您先幫我回覆【單位全名】，我才能幫您處理或通知專人～", "請先回覆【單位全名】，啟用 AI 客服，避免重複提醒"]
+    ORG_SUCCESS_MESSAGE_EXISTING = "已收到資料並完成建檔！"
+
+    # Legacy messages (kept for backward compatibility)
+    ORG_REQUEST_MESSAGE = ["您好，我是一起夢想 AI 小助手，請先回覆【單位全名】，我會再協助您的需求", "麻煩您先幫我回覆【單位全名】，我才能幫您處理或通知專人～", "請先回覆【單位全名】，啟用 AI 客服，避免重複提醒"]
     ORG_SUCCESS_MESSAGE = "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
 
     # System prompt for organization name extraction
     ORG_EXTRACTION_SYSTEM_PROMPT = """你是社會福利機構名稱提取助手。
 用戶會輸入組織名稱，可能包含：
-全名（如「社團法人一起夢想公益協會」）
-簡稱（如「一起夢想」「八方義行團」）
-打字錯誤或缺字（如「一起夢相」「一其夢想」）
+- 全名（如「社團法人一起夢想公益協會」）
+- 簡稱（如「一起夢想」「八方義行團」）
+- 打字錯誤或缺字（如「一起夢相」「一其夢想」）
 請務必遵守以下規則：
-若輸入字串明顯是組織名稱（即使未包含「協會」），且字數 ≥ 3，輸出該名稱。
-若輸入字串過短（2 字以下）或過於模糊（如「夢想」「一起」「協會」），輸出 “none”。
-若輸入包含多段文字，只取最像機構名稱的一段，不要組合無關文字。
-若字串含明顯組織類字（協會、協進會、促進會、讀書會、義行團、事務所等），即使拼字稍有錯誤也視為有效。
-輸出結果需為唯一名稱或 “none”，不得包含其他說明文字或標點符號。"""
+1. 若輸入字串明顯是組織名稱（即使未包含「協會」），且字數 ≥ 3，輸出該名稱。
+2. 若輸入字串過短（2 字以下）或過於模糊（如「夢想」「一起」「協會」），輸出 “none”。
+3. 若輸入包含多段文字，只取最像機構名稱的一段，不要組合無關文字。
+4. 若字串含明顯組織類字（協會、協進會、促進會、讀書會、義行團、事務所等），即使拼字稍有錯誤也視為有效。
+5. 輸出結果需為唯一名稱或 “none”，不得包含其他說明文字或標點符號。"""
 
     # Chinese number patterns for text formatting
     CHINESE_NUMBERS = "一二三四五六七八九十"
