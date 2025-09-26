@@ -70,7 +70,7 @@ class MessageProcessor:
 
         if reminded_count == 0:
             # Reply with request_org_name_msg, add 1 to reminded_count, skip the rest
-            request_msg = messages.get_org_request_message(reminded_count)
+            request_msg = messages.get_org_request_message(reminded_count, is_new_user)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
             logger.info(f"Sent organization request to user {user_id} (attempt {reminded_count + 1}, is_new={is_new_user})")
@@ -90,13 +90,13 @@ class MessageProcessor:
                 notification_type="org_registered"
             )
 
-            success_msg = messages.get_org_success_message()
+            success_msg = messages.get_org_success_message(is_new_user)
             self.line.send_message(user_id, success_msg, message.reply_token)
             logger.info(f"Successfully extracted and saved organization '{extracted_org}' for user {user_id} (after {reminded_count + 1} attempts, is_new={is_new_user})")
             return
         else:
             # Extraction failed → ask again, increment count
-            request_msg = messages.get_org_request_message(reminded_count)
+            request_msg = messages.get_org_request_message(reminded_count, is_new_user)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
             logger.info(f"Organization extraction failed for user {user_id}, asking again (attempt {reminded_count + 1}, is_new={is_new_user})")

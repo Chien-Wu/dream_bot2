@@ -43,7 +43,7 @@ class Messages:
 
     # Legacy messages (kept for backward compatibility)
     ORG_REQUEST_MESSAGE = ["您好，我是一起夢想 AI 小助手，請先回覆【單位全名】，我會再協助您的需求", "麻煩您先幫我回覆【單位全名】，我才能幫您處理或通知專人～", "請先回覆【單位全名】，啟用 AI 客服，避免重複提醒"]
-    ORG_SUCCESS_MESSAGE = "已收到資料並完成建檔！很高興認識貴單位，一起夢想會持續支持微型社福，期待未來有更多交流 🤜🏻🤛🏻"
+    ORG_SUCCESS_MESSAGE = "已收到資料並完成建檔！"
 
     # System prompt for organization name extraction
     ORG_EXTRACTION_SYSTEM_PROMPT = """你是社會福利機構名稱提取助手。
@@ -113,16 +113,29 @@ class MessageManager:
         """Get handover confirmation message."""
         return self.messages.HANDOVER_CONFIRMATION
 
-    def get_org_request_message(self, attempt_count: int = 0) -> str:
-        """Get organization name request message based on attempt count."""
-        messages_list = self.messages.ORG_REQUEST_MESSAGE
+    def get_org_request_message(self, attempt_count: int = 0, is_new_user: bool = None) -> str:
+        """Get organization name request message based on attempt count and user type."""
+        if is_new_user:  # Truthy check (handles True, 1, etc.)
+            messages_list = self.messages.ORG_REQUEST_MESSAGE_NEW
+        elif is_new_user is not None and not is_new_user:  # Falsy but not None (handles False, 0, etc.)
+            messages_list = self.messages.ORG_REQUEST_MESSAGE_EXISTING
+        else:
+            # Fallback to legacy messages if is_new_user is None (backward compatibility)
+            messages_list = self.messages.ORG_REQUEST_MESSAGE
+
         # Use the attempt count as index, but cap at the last message
         index = min(attempt_count, len(messages_list) - 1)
         return messages_list[index]
 
-    def get_org_success_message(self) -> str:
-        """Get organization name success message."""
-        return self.messages.ORG_SUCCESS_MESSAGE
+    def get_org_success_message(self, is_new_user: bool = None) -> str:
+        """Get organization name success message based on user type."""
+        if is_new_user:  # Truthy check (handles True, 1, etc.)
+            return self.messages.ORG_SUCCESS_MESSAGE_NEW
+        elif is_new_user is not None and not is_new_user:  # Falsy but not None (handles False, 0, etc.)
+            return self.messages.ORG_SUCCESS_MESSAGE_EXISTING
+        else:
+            # Fallback to legacy message if is_new_user is None (backward compatibility)
+            return self.messages.ORG_SUCCESS_MESSAGE
 
     def get_org_extraction_prompt(self) -> str:
         """Get organization name extraction system prompt."""
