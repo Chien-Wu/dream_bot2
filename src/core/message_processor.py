@@ -47,11 +47,8 @@ class MessageProcessor:
         """
         user_id = message.user_id
 
-        # 1. FIRST: Check if there's any record, if not, instantly build empty row
-        self._ensure_user_record(user_id)
-
-        # 2. SECOND: Check if there is organization_name
-        org_record = self.db.get_organization_record(user_id)
+        # 1. Get organization record, ensuring it exists (atomic operation)
+        org_record = self.db.get_organization_record(user_id, ensure_exists=True)
         if org_record and org_record.get('organization_name'):
             # Has org_name → skip the rest, get into message buffer (EXISTING LOGIC)
             if message.message_type == "text":

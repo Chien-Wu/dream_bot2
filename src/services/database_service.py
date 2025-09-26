@@ -117,7 +117,8 @@ class DatabaseService:
                     reminded_count INT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_created_at (created_at)
+                    INDEX idx_created_at (created_at),
+                    INDEX idx_updated_at (updated_at)
                 );
                 """
 
@@ -227,6 +228,17 @@ class DatabaseService:
                     logger.info("Reminded_count column added successfully")
                 else:
                     logger.info("Organization data table already uses simplified schema")
+
+                # Add missing index on updated_at if it doesn't exist
+                cursor.execute("SHOW INDEXES FROM organization_data WHERE Key_name = 'idx_updated_at'")
+                updated_at_index_exists = cursor.fetchone() is not None
+
+                if not updated_at_index_exists:
+                    logger.info("Adding missing idx_updated_at index...")
+                    cursor.execute("ALTER TABLE organization_data ADD INDEX idx_updated_at (updated_at)")
+                    logger.info("idx_updated_at index added successfully")
+                else:
+                    logger.info("idx_updated_at index already exists")
                 
                 conn.commit()
                 
@@ -373,7 +385,7 @@ class DatabaseService:
                 cursor.execute("""
                     INSERT INTO organization_data (user_id)
                     VALUES (%s)
-                    ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP
+                    ON DUPLICATE KEY UPDATE user_id = user_id
                 """, (user_id,))
                 conn.commit()
 
@@ -381,15 +393,28 @@ class DatabaseService:
             logger.error(f"Failed to ensure user record for {user_id}: {e}")
             raise DatabaseError(f"Failed to ensure user record: {e}")
 
-    def get_organization_record(self, user_id: str) -> Optional[Dict[str, Any]]:
-        """Get organization data record for a user."""
+    def get_organization_record(self, user_id: str, ensure_exists: bool = False) -> Optional[Dict[str, Any]]:
+        """Get organization data record for a user, optionally ensuring it exists."""
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+                if ensure_exists:
+                    # Ensure record exists first (without updating timestamp if already exists)
+                    cursor.execute("""
+                        INSERT INTO organization_data (user_id)
+                        VALUES (%s)
+                        ON DUPLICATE KEY UPDATE user_id = user_id
+                    """, (user_id,))
+
                 cursor.execute("""
                     SELECT * FROM organization_data WHERE user_id = %s
                 """, (user_id,))
                 result = cursor.fetchone()
+
+                if ensure_exists:
+                    conn.commit()
+
                 return result
 
         except Exception as e:
@@ -457,6 +482,24 @@ class DatabaseService:
         except Exception as e:
             logger.error(f"Failed to reset reminded count for user {user_id}: {e}")
             raise DatabaseError(f"Failed to reset reminded count: {e}")
+
+    def create_user_with_initial_reminder(self, user_id: str) -> None:
+        """Create user record with reminded_count=1 atomically (for new user follow events)."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO organization_data (user_id, reminded_count)
+                    VALUES (%s, 1)
+                    ON DUPLICATE KEY UPDATE
+                    reminded_count = reminded_count + 1,
+                    updated_at = CURRENT_TIMESTAMP
+                """, (user_id,))
+                conn.commit()
+
+        except Exception as e:
+            logger.error(f"Failed to create user with initial reminder for {user_id}: {e}")
+            raise DatabaseError(f"Failed to create user with initial reminder: {e}")
 
     def get_reminded_count(self, user_id: str) -> int:
         """Get current reminded_count for user."""

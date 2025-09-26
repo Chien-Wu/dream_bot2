@@ -89,8 +89,14 @@ class SyncScheduler:
                 logger.info("No organization data to sync")
                 return True
 
+            # Deduplicate by user_id (keep latest record per user)
+            deduplicated_orgs = self._deduplicate_organizations(updated_organizations)
+
+            if len(deduplicated_orgs) < len(updated_organizations):
+                logger.info(f"Deduplicated {len(updated_organizations)} records to {len(deduplicated_orgs)}")
+
             # Sync to Google Sheets
-            success = self.sheets.sync_organization_data(updated_organizations)
+            success = self.sheets.sync_organization_data(deduplicated_orgs)
 
             if success:
                 # Update last sync time
@@ -187,7 +193,7 @@ class SyncScheduler:
             return []
 
     def _get_updated_organizations_since(self, since_time: datetime) -> List[Dict[str, Any]]:
-        """Get updated organization records since the given time."""
+        """Get organization records that have meaningful updates since the given time."""
         try:
             query = """
                 SELECT
@@ -197,7 +203,14 @@ class SyncScheduler:
                     created_at,
                     updated_at
                 FROM organization_data
-                WHERE updated_at > %s
+                WHERE (
+                    updated_at > %s
+                    AND (
+                        organization_name IS NOT NULL
+                        OR reminded_count > 0
+                        OR created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                    )
+                )
                 ORDER BY updated_at ASC
                 LIMIT 1000
             """
@@ -213,6 +226,24 @@ class SyncScheduler:
         except Exception as e:
             logger.error(f"Failed to get updated organizations: {e}")
             return []
+
+    def _deduplicate_organizations(self, organizations: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Deduplicate organization records, keeping the latest record per user_id."""
+        if not organizations:
+            return []
+
+        # Group by user_id and keep the record with latest updated_at
+        user_records = {}
+        for org in organizations:
+            user_id = org.get('user_id')
+            if user_id:
+                if user_id not in user_records or org.get('updated_at', '') > user_records[user_id].get('updated_at', ''):
+                    user_records[user_id] = org
+
+        # Return deduplicated list sorted by updated_at
+        deduplicated = list(user_records.values())
+        deduplicated.sort(key=lambda x: x.get('updated_at', ''))
+        return deduplicated
 
     def _enrich_messages_with_user_data(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Enrich messages with user organization data."""

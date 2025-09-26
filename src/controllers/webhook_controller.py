@@ -72,9 +72,8 @@ class WebhookController:
 
                 log_user_action(logger, user_id, "user_followed")
 
-                # Create org_data row with org_name as None and reminded_count as 1
-                self.processor.db.ensure_user_record(user_id)
-                self.processor.db.increment_reminded_count(user_id)
+                # Create org_data row with reminded_count=1 atomically
+                self.processor.db.create_user_with_initial_reminder(user_id)
 
                 logger.info(f"Created org_data record for new user {user_id} with reminded_count=1")
 
