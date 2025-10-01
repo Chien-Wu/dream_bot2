@@ -288,8 +288,9 @@ class MessageProcessor:
                 except Exception as e:
                     logger.error(f"Failed to notify admin: {e}")
 
-                # Low confidence - complete silence to user, no handover flag
-                logger.debug(f"Silent handling for low confidence response to user {message.user_id}")
+                # Low confidence - set handover flag and maintain silence to user
+                self.handover_service.set_handover_flag(message.user_id)
+                logger.info(f"Set handover flag for low confidence response to user {message.user_id}")
             else:
                 # High confidence - send AI response
                 logger.debug(f"Sending high confidence AI response to user {message.user_id}")
