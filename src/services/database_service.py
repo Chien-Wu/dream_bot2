@@ -198,23 +198,35 @@ class DatabaseService:
                 cursor.execute("SHOW COLUMNS FROM organization_data")
                 existing_columns = [col[0] for col in cursor.fetchall()]
 
-                # Check if we need to migrate from old schema
-                if 'completion_status' in existing_columns:
-                    logger.info("Migrating organization_data table to simplified schema...")
+                # Check if we need to migrate from old schema - check for ANY old column
+                old_columns = ['username', 'service_city', 'contact_info', 'service_target', 'completion_status', 'raw_messages', 'handover_flag_expires_at']
+                old_columns_present = [col for col in old_columns if col in existing_columns]
 
-                    # Drop old columns that are no longer needed (including username)
-                    old_columns = ['username', 'service_city', 'contact_info', 'service_target', 'completion_status', 'raw_messages', 'handover_flag_expires_at']
-                    for col in old_columns:
-                        if col in existing_columns:
+                if old_columns_present:
+                    logger.info(f"Migrating organization_data table to simplified schema (found old columns: {old_columns_present})...")
+
+                    # Drop old columns that are no longer needed
+                    for col in old_columns_present:
+                        try:
                             cursor.execute(f"ALTER TABLE organization_data DROP COLUMN {col}")
+                            logger.info(f"Dropped old column: {col}")
+                        except Exception as e:
+                            logger.warning(f"Failed to drop column {col}: {e}")
 
                     # Drop old indexes
-                    cursor.execute("SHOW INDEXES FROM organization_data")
-                    indexes = [idx[2] for idx in cursor.fetchall()]
-                    old_indexes = ['idx_completion_status', 'idx_handover_expires', 'idx_handover_flag_expires_at']
-                    for idx in old_indexes:
-                        if idx in indexes:
-                            cursor.execute(f"DROP INDEX {idx} ON organization_data")
+                    try:
+                        cursor.execute("SHOW INDEXES FROM organization_data")
+                        indexes = [idx[2] for idx in cursor.fetchall()]
+                        old_indexes = ['idx_completion_status', 'idx_handover_expires', 'idx_handover_flag_expires_at']
+                        for idx in old_indexes:
+                            if idx in indexes:
+                                try:
+                                    cursor.execute(f"DROP INDEX {idx} ON organization_data")
+                                    logger.info(f"Dropped old index: {idx}")
+                                except Exception as e:
+                                    logger.warning(f"Failed to drop index {idx}: {e}")
+                    except Exception as e:
+                        logger.warning(f"Failed to check/drop old indexes: {e}")
 
                     logger.info("Organization data table migration completed")
                 elif 'username' in existing_columns:

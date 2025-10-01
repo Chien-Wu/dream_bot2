@@ -179,13 +179,16 @@ class GoogleSheetsService:
             # Convert messages to sheet format
             rows = []
             for msg in messages:
-                # Handle confidence field - convert Decimal to float
+                # Handle confidence field - convert Decimal to float or empty string
                 confidence = msg.get('confidence', '')
-                if confidence and confidence != '':
+                if confidence is not None and confidence != '':
                     try:
-                        confidence = float(confidence)
-                    except (ValueError, TypeError):
+                        # Convert Decimal/float to float, then to string for Google Sheets
+                        confidence = str(float(confidence))
+                    except (ValueError, TypeError, AttributeError):
                         confidence = ''
+                else:
+                    confidence = ''
 
                 row = [
                     datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
@@ -195,7 +198,7 @@ class GoogleSheetsService:
                     str(msg.get('content', '')),                   # User Message
                     str(msg.get('ai_response', '')),               # AI Response
                     str(msg.get('ai_explanation', '')),            # AI Explanation
-                    confidence,                                    # Confidence (now float or empty)
+                    confidence,                                    # Confidence as string
                     str(msg.get('created_at', ''))                 # Created At
                 ]
                 rows.append(row)
@@ -203,8 +206,22 @@ class GoogleSheetsService:
             # Append to sheet
             range_name = f"{sheet_name}!A:I"
 
+            # Ensure all values are JSON serializable (strings, numbers, booleans)
+            sanitized_rows = []
+            for row in rows:
+                sanitized_row = []
+                for value in row:
+                    if value is None:
+                        sanitized_row.append('')
+                    elif isinstance(value, (str, int, float, bool)):
+                        sanitized_row.append(value)
+                    else:
+                        # Convert any other type to string
+                        sanitized_row.append(str(value))
+                sanitized_rows.append(sanitized_row)
+
             body = {
-                'values': rows
+                'values': sanitized_rows
             }
 
             result = self.service.spreadsheets().values().append(
@@ -259,8 +276,22 @@ class GoogleSheetsService:
             # Append to sheet
             range_name = f"{sheet_name}!A:F"
 
+            # Ensure all values are JSON serializable (strings, numbers, booleans)
+            sanitized_rows = []
+            for row in rows:
+                sanitized_row = []
+                for value in row:
+                    if value is None:
+                        sanitized_row.append('')
+                    elif isinstance(value, (str, int, float, bool)):
+                        sanitized_row.append(value)
+                    else:
+                        # Convert any other type to string
+                        sanitized_row.append(str(value))
+                sanitized_rows.append(sanitized_row)
+
             body = {
-                'values': rows
+                'values': sanitized_rows
             }
 
             result = self.service.spreadsheets().values().append(
