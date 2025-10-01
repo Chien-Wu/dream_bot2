@@ -28,7 +28,7 @@ class Messages:
     ORGANIZATION_NOT_SET = "未設定"
 
     # User handover trigger
-    USER_HANDOVER_TRIGGER = "轉人工"
+    USER_HANDOVER_TRIGGER = ["轉真人", "轉人工", "找客服", "找專員", "專員", "客服", "真人"]
 
     # User response messages
     HANDOVER_CONFIRMATION = "已為您通知管理者，請稍候。"
@@ -103,7 +103,24 @@ class MessageManager:
 
     def is_handover_request(self, message_text: str) -> bool:
         """Check if message is a handover request."""
-        return message_text.strip() == self.messages.USER_HANDOVER_TRIGGER
+        if not message_text:
+            return False
+
+        message_lower = message_text.lower().strip()
+
+        # Check if any trigger phrase appears in the message (case-insensitive)
+        for trigger in self.messages.USER_HANDOVER_TRIGGER:
+            if trigger.lower() in message_lower:
+                return True
+
+        # Special handling for "人工" - only trigger if not part of "人工智慧" or similar compounds
+        if "人工" in message_lower:
+            # Exclude common false positives
+            false_positives = ["人工智慧", "人工智能", "人工費", "人工成本"]
+            if not any(fp in message_lower for fp in false_positives):
+                return True
+
+        return False
 
     def get_organization_placeholder(self) -> str:
         """Get organization name placeholder."""
