@@ -338,16 +338,32 @@ class MessageProcessor:
             # Initialize OpenAI client
             client = openai.OpenAI(api_key=config.openai.api_key)
 
-            # Call OpenAI for extraction
-            response = client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": messages.get_org_extraction_prompt()},
-                    {"role": "user", "content": user_message}
-                ],
-                max_tokens=100,
-                temperature=0.1
-            )
+            # Use responsive prompt if configured, otherwise fallback to chat completions
+            if config.openai.org_extract_prompt_id:
+                # Use OpenAI responsive prompts API
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini",  # Responsive prompts require gpt-4o-mini or better
+                    messages=[
+                        {"role": "user", "content": user_message}
+                    ],
+                    prompt_id=config.openai.org_extract_prompt_id,
+                    prompt_version=config.openai.org_extract_prompt_version,
+                    max_tokens=100,
+                    temperature=0.1
+                )
+                logger.info(f"Using responsive prompt ID: {config.openai.org_extract_prompt_id} version: {config.openai.org_extract_prompt_version}")
+            else:
+                # Fallback to traditional chat completions with system prompt
+                response = client.chat.completions.create(
+                    model="gpt-3.5-turbo",
+                    messages=[
+                        {"role": "system", "content": messages.get_org_extraction_prompt()},
+                        {"role": "user", "content": user_message}
+                    ],
+                    max_tokens=100,
+                    temperature=0.1
+                )
+                logger.info("Using fallback chat completions with system prompt")
 
             extracted_name = response.choices[0].message.content.strip()
             logger.info(f"OpenAI extraction result: '{extracted_name}'")

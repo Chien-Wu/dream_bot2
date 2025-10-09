@@ -48,6 +48,10 @@ class OpenAIConfig:
     temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
     prompt_id: Optional[str] = os.getenv('OPENAI_PROMPT_ID')
     prompt_version: str = os.getenv('OPENAI_PROMPT_VERSION', '1')
+
+    # Organization extraction responsive prompt configuration
+    org_extract_prompt_id: Optional[str] = os.getenv('OPENAI_ORG_EXTRACT_PROMPT_ID')
+    org_extract_prompt_version: str = os.getenv('OPENAI_ORG_EXTRACT_PROMPT_VERSION', '1')
     
     def __post_init__(self):
         if not self.api_key:

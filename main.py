@@ -81,8 +81,9 @@ def start_handover_cleanup_scheduler():
         cleanup_interval = config.handover.cleanup_interval_minutes * 60  # Convert to seconds
         threading.Timer(cleanup_interval, cleanup_job).start()
     
-    # Start the first cleanup job
-    cleanup_job()
+    # Start the first cleanup job with delay to avoid infinite recursion
+    cleanup_interval = config.handover.cleanup_interval_minutes * 60  # Convert to seconds
+    threading.Timer(cleanup_interval, cleanup_job).start()
     cleanup_logger.info(f"Started handover flag cleanup scheduler (interval: {config.handover.cleanup_interval_minutes} minutes)")
 
 
@@ -117,8 +118,9 @@ def start_sheets_sync_scheduler():
         sync_interval = config.google_sheets.sync_interval_minutes * 60  # Convert to seconds
         threading.Timer(sync_interval, sync_job).start()
 
-    # Start the first sync job
-    sync_job()
+    # Start the first sync job with delay to avoid infinite recursion
+    sync_interval = config.google_sheets.sync_interval_minutes * 60  # Convert to seconds
+    threading.Timer(sync_interval, sync_job).start()
     sync_logger.info(f"Started Google Sheets sync scheduler (interval: {config.google_sheets.sync_interval_minutes} minutes)")
 
 
