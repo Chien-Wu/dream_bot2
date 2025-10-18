@@ -88,3 +88,4 @@ uvicorn==0.35.0
 Werkzeug==2.3.7
 wrapt==1.17.3
 yarl==1.20.1
+Authlib==1.6.5

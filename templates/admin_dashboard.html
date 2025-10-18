@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dream Bot Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Apple-style toggle switch */
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 30px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: 0.3s;
+            border-radius: 30px;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 22px;
+            width: 22px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.3s;
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+
+        input:checked + .toggle-slider {
+            background-color: #34d399;
+        }
+
+        input:checked + .toggle-slider:before {
+            transform: translateX(30px);
+        }
+
+        input:disabled + .toggle-slider {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .toggle-slider:hover:not(input:disabled + .toggle-slider) {
+            opacity: 0.9;
+        }
+
+        /* Loading animation */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .animate-spin {
+            animation: spin 1s linear infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-sm">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <span class="text-3xl">🤖</span>
+                    <h1 class="text-2xl font-bold text-gray-800">Dream Bot Admin</h1>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-600">{{ user_email }}</span>
+                    <a href="{{ url_for('admin_logout') }}"
+                       class="text-sm text-blue-600 hover:text-blue-800">登出</a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="container mx-auto px-4 py-8">
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-2">總用戶數</div>
+                <div class="text-3xl font-bold text-gray-800" id="stat-total">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-2">AI 啟用</div>
+                <div class="text-3xl font-bold text-green-600" id="stat-active">-</div>
+            </div>
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="text-sm text-gray-600 mb-2">已封鎖</div>
+                <div class="text-3xl font-bold text-red-600" id="stat-blocked">-</div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="bg-white rounded-lg shadow p-6 mb-6">
+            <div class="flex flex-col md:flex-row md:items-center md:justify-between space-y-4 md:space-y-0">
+                <div class="flex-1 max-w-md">
+                    <label class="sr-only" for="search">搜尋</label>
+                    <div class="relative">
+                        <input
+                            type="text"
+                            id="search"
+                            placeholder="搜尋單位名稱或 User ID..."
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            oninput="filterUsers()"
+                        >
+                        <span class="absolute right-3 top-2.5 text-gray-400">🔍</span>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button
+                        onclick="refreshUsers()"
+                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200"
+                        id="refresh-btn"
+                    >
+                        🔄 重新整理
+                    </button>
+                    <span class="text-sm text-gray-600" id="last-update">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Table -->
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50 border-b">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                單位名稱
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                User ID
+                            </th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                最後活動時間
+                            </th>
+                            <th class="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                AI 回覆
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Will be populated by JavaScript -->
+                        <tr>
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                                載入中...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden p-8 text-center text-gray-500">
+                <div class="text-4xl mb-4">📭</div>
+                <p>沒有找到符合的用戶</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- JavaScript -->
+    <script src="/static/js/admin.js"></script>
+</body>
+</html>

@@ -537,3 +537,41 @@ class DatabaseService:
             logger.error(f"Failed to get reminded count for user {user_id}: {e}")
             raise DatabaseError(f"Failed to get reminded count: {e}")
 
+    def get_all_users_with_handover_status(self, limit: int = 100):
+        """
+        Get all users with their handover status for admin dashboard.
+
+        Args:
+            limit: Maximum number of users to return (default: 100)
+
+        Returns:
+            List of dicts with user info and handover status
+        """
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor(pymysql.cursors.DictCursor)
+                cursor.execute("""
+                    SELECT
+                        od.user_id,
+                        COALESCE(od.organization_name, '(未設定)') as organization_name,
+                        od.updated_at as last_activity,
+                        od.is_new,
+                        CASE
+                            WHEN uhf.expires_at > NOW() THEN 1
+                            ELSE 0
+                        END as is_blocked,
+                        uhf.expires_at as blocked_until
+                    FROM organization_data od
+                    LEFT JOIN user_handover_flags uhf ON od.user_id = uhf.user_id
+                    ORDER BY od.updated_at DESC
+                    LIMIT %s
+                """, (limit,))
+
+                users = cursor.fetchall()
+                logger.debug(f"Retrieved {len(users)} users with handover status")
+                return users
+
+        except Exception as e:
+            logger.error(f"Failed to get users with handover status: {e}")
+            raise DatabaseError(f"Failed to get users with handover status: {e}")
+

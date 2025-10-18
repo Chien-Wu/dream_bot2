@@ -46,7 +46,8 @@ class Messages:
     ORG_SUCCESS_MESSAGE = "已收到資料並完成建檔！"
 
     # System prompt for organization name extraction
-    ORG_EXTRACTION_SYSTEM_PROMPT = """你是社會福利機構名稱提取助手。
+    ORG_EXTRACTION_SYSTEM_PROMPT = """
+你是社會福利機構名稱提取助手。
 用戶會輸入組織名稱，可能包含：
 - 全名（如「社團法人一起夢想公益協會」）
 - 簡稱（如「一起夢想」「八方義行團」）
@@ -56,7 +57,9 @@ class Messages:
 2. 若輸入字串過短（2 字以下）或過於模糊（如「夢想」「一起」「協會」），輸出 “none”。
 3. 若輸入包含多段文字，只取最像機構名稱的一段，不要組合無關文字。
 4. 若字串含明顯組織類字（協會、協進會、促進會、讀書會、義行團、事務所等），即使拼字稍有錯誤也視為有效。
-5. 輸出結果需為唯一名稱或 “none”，不得包含其他說明文字或標點符號。"""
+5. 輸出結果需為唯一名稱或 “none”，不得包含其他說明文字或標點符號。
+
+"""
 
     # Chinese number patterns for text formatting
     CHINESE_NUMBERS = "一二三四五六七八九十"

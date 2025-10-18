@@ -83,6 +83,21 @@ class GoogleSheetsConfig:
 
 
 @dataclass
+class GoogleOAuthConfig:
+    """Google OAuth configuration for admin dashboard."""
+    client_id: Optional[str] = os.getenv('GOOGLE_OAUTH_CLIENT_ID')
+    client_secret: Optional[str] = os.getenv('GOOGLE_OAUTH_CLIENT_SECRET')
+    allowed_emails_str: str = os.getenv('GOOGLE_OAUTH_ALLOWED_EMAILS', '')
+
+    @property
+    def allowed_emails(self):
+        """Parse allowed emails from comma-separated string."""
+        if not self.allowed_emails_str:
+            return []
+        return [email.strip() for email in self.allowed_emails_str.split(',') if email.strip()]
+
+
+@dataclass
 class AppConfig:
     """Main application configuration."""
     environment: str = os.getenv('ENVIRONMENT', 'development')
@@ -90,10 +105,13 @@ class AppConfig:
     log_level: str = os.getenv('LOG_LEVEL', 'INFO')
     host: str = os.getenv('HOST', '0.0.0.0')
     port: int = int(os.getenv('PORT', '5000'))
-    
+
     # AI Debug Information Switch
     show_ai_debug_info: bool = os.getenv('SHOW_AI_DEBUG_INFO', 'False').lower() == 'true'
-    
+
+    # Flask secret key for sessions
+    flask_secret_key: str = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+
     # Sub-configurations
     database: DatabaseConfig = None
     line: LineConfig = None
@@ -101,7 +119,8 @@ class AppConfig:
     message_buffer: MessageBufferConfig = None
     handover: HandoverConfig = None
     google_sheets: GoogleSheetsConfig = None
-    
+    google_oauth: GoogleOAuthConfig = None
+
     def __post_init__(self):
         self.database = DatabaseConfig()
         self.line = LineConfig()
@@ -109,6 +128,7 @@ class AppConfig:
         self.message_buffer = MessageBufferConfig()
         self.handover = HandoverConfig()
         self.google_sheets = GoogleSheetsConfig()
+        self.google_oauth = GoogleOAuthConfig()
 
 
 # Global configuration instance

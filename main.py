@@ -3,6 +3,7 @@ Main application entry point for Dream Line Bot.
 Configures dependency injection and starts the Flask application.
 """
 import threading
+from datetime import timedelta
 from flask import Flask
 
 from config import config
@@ -13,34 +14,47 @@ from src.services.user_handover_service import UserHandoverService
 from src.services.google_sheets_service import GoogleSheetsService
 from src.services.sync_scheduler import SyncScheduler
 from src.controllers import WebhookController
+from src.controllers.admin_controller import AdminController
 
 
 def create_app() -> Flask:
     """
     Create and configure the Flask application.
-    
+
     Returns:
         Configured Flask application
     """
     app = Flask(__name__)
-    
+
+    # Configure Flask session
+    app.secret_key = config.flask_secret_key
+    app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
+
+    # Trust proxy headers (for ngrok/nginx)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
     # Setup logging
     logger = setup_logger(__name__)
     logger.info(f"Starting Dream Line Bot in {config.environment} mode")
-    
+
     # Configure dependency injection
     setup_dependencies()
-    
+
     # Initialize database
     db_service = container.resolve(DatabaseService)
     db_service.initialize_tables()
-    
+
     # Initialize MessageProcessor
     message_processor = container.resolve(MessageProcessor)
     logger.info("Message processor initialized")
     line_service = container.resolve(LineService)
     webhook_controller = WebhookController(app, message_processor, line_service)
-    
+
+    # Initialize Admin Controller
+    admin_controller = AdminController(app, db_service)
+    logger.info("Admin controller initialized")
+
     # Start background cleanup task for handover flags
     start_handover_cleanup_scheduler()
 

@@ -12,10 +12,11 @@ from .exceptions import (
     TimeoutError
 )
 from .text_utils import count_chinese_characters
+from .auth_decorator import require_admin_auth
 
 __all__ = [
     'setup_logger',
-    'log_user_action', 
+    'log_user_action',
     'log_error_with_context',
     'DreamBotException',
     'ConfigurationError',
@@ -26,5 +27,6 @@ __all__ = [
     'ValidationError',
     'RateLimitError',
     'TimeoutError',
-    'count_chinese_characters'
+    'count_chinese_characters',
+    'require_admin_auth'
 ]
