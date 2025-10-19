@@ -109,6 +109,9 @@ class AppConfig:
     # AI Debug Information Switch
     show_ai_debug_info: bool = os.getenv('SHOW_AI_DEBUG_INFO', 'False').lower() == 'true'
 
+    # Organization Extraction Toggle
+    enable_org_extraction: bool = os.getenv('ENABLE_ORG_EXTRACTION', 'true').lower() == 'true'
+
     # Flask secret key for sessions
     flask_secret_key: str = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
 

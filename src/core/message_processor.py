@@ -47,6 +47,25 @@ class MessageProcessor:
         """
         user_id = message.user_id
 
+        # CHECK: If org extraction is disabled, skip entirely and process directly
+        if not config.enable_org_extraction:
+            # Ensure user record exists (for admin dashboard compatibility)
+            self.db.ensure_user_record(user_id)
+
+            # Process message directly (buffer if text, otherwise thread)
+            if message.message_type == "text":
+                if message_buffer.add_message(message):
+                    logger.debug(f"Message buffered for user {user_id} (org extraction disabled)")
+                    return
+
+            # Process immediately (non-text messages or unbuffered text messages)
+            threading.Thread(
+                target=self._handle_single_message,
+                args=(message,),
+                daemon=True
+            ).start()
+            return
+
         # 1. Get organization record, ensuring it exists (atomic operation)
         org_record = self.db.get_organization_record(user_id, ensure_exists=True)
         if org_record and org_record.get('organization_name'):
