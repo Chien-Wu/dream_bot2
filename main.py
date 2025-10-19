@@ -38,6 +38,10 @@ def create_app() -> Flask:
     logger = setup_logger(__name__)
     logger.info(f"Starting Dream Line Bot in {config.environment} mode")
 
+    # Create main Blueprint with /flask prefix (for NGINX routing)
+    from flask import Blueprint
+    flask_bp = Blueprint('flask', __name__, url_prefix='/flask')
+
     # Configure dependency injection
     setup_dependencies()
 
@@ -49,11 +53,15 @@ def create_app() -> Flask:
     message_processor = container.resolve(MessageProcessor)
     logger.info("Message processor initialized")
     line_service = container.resolve(LineService)
-    webhook_controller = WebhookController(app, message_processor, line_service)
+    webhook_controller = WebhookController(flask_bp, message_processor, line_service)
 
     # Initialize Admin Controller
-    admin_controller = AdminController(app, db_service)
+    admin_controller = AdminController(flask_bp, db_service)
     logger.info("Admin controller initialized")
+
+    # Register Blueprint to app
+    app.register_blueprint(flask_bp)
+    logger.info("Registered Flask Blueprint with /flask prefix")
 
     # Start background cleanup task for handover flags
     start_handover_cleanup_scheduler()

@@ -22,7 +22,7 @@ def require_admin_auth(f):
         # Check if user is authenticated
         if 'authenticated' not in session or not session['authenticated']:
             logger.warning(f"Unauthenticated access attempt to {request.path}")
-            return redirect(url_for('admin_login'))
+            return redirect(url_for('flask.admin_login'))
 
         # Check if email is in allowed list
         user_email = session.get('user_email')

@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 async function loadUsers() {
     try {
-        const response = await fetch('/admin/api/users');
+        const response = await fetch('/flask/admin/api/users');
         const data = await response.json();
 
         if (data.success) {
@@ -113,8 +113,8 @@ async function toggleAI(checkbox) {
     try {
         // Determine endpoint based on new state
         const endpoint = newState
-            ? `/admin/api/user/${userId}/unblock`  // Toggle ON = unblock
-            : `/admin/api/user/${userId}/block`;   // Toggle OFF = block
+            ? `/flask/admin/api/user/${userId}/unblock`  // Toggle ON = unblock
+            : `/flask/admin/api/user/${userId}/block`;   // Toggle OFF = block
 
         const response = await fetch(endpoint, {
             method: 'POST',

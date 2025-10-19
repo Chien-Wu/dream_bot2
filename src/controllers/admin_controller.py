@@ -2,7 +2,7 @@
 Admin controller for dashboard and user management.
 """
 from datetime import timedelta
-from flask import Flask, session, redirect, url_for, request, jsonify, render_template
+from flask import Blueprint, session, redirect, url_for, request, jsonify, render_template
 from authlib.integrations.flask_client import OAuth
 
 from config import config
@@ -18,53 +18,62 @@ logger = setup_logger(__name__)
 class AdminController:
     """Controller for admin dashboard and API endpoints."""
 
-    def __init__(self, app: Flask, database_service: DatabaseService):
-        self.app = app
+    def __init__(self, blueprint: Blueprint, database_service: DatabaseService):
+        self.blueprint = blueprint
         self.db = database_service
         self.handover_service = container.resolve(UserHandoverService)
 
-        # Initialize OAuth
-        self.oauth = OAuth(app)
-        self.google = self.oauth.register(
-            name='google',
-            client_id=config.google_oauth.client_id,
-            client_secret=config.google_oauth.client_secret,
-            server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
-            client_kwargs={
-                'scope': 'openid email profile'
-            }
-        )
+        # Initialize OAuth - need to get the parent Flask app from blueprint
+        # OAuth must be initialized with the Flask app, not the Blueprint
+        from flask import current_app
+        self.oauth = OAuth()
+
+        # Register OAuth after blueprint is registered to app
+        # We'll do this in a before_first_request handler
+        @self.blueprint.before_app_request
+        def init_oauth():
+            if not hasattr(self, 'google'):
+                self.oauth.init_app(current_app)
+                self.google = self.oauth.register(
+                    name='google',
+                    client_id=config.google_oauth.client_id,
+                    client_secret=config.google_oauth.client_secret,
+                    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+                    client_kwargs={
+                        'scope': 'openid email profile'
+                    }
+                )
 
         self._register_routes()
 
     def _register_routes(self):
         """Register all admin routes."""
 
-        @self.app.route('/admin')
+        @self.blueprint.route('/admin')
         @require_admin_auth
         def admin_dashboard():
             """Main admin dashboard page."""
             return render_template('admin_dashboard.html',
                                    user_email=session.get('user_email'))
 
-        @self.app.route('/admin/login')
+        @self.blueprint.route('/admin/login')
         def admin_login():
             """Admin login page."""
             # If already authenticated, redirect to dashboard
             if session.get('authenticated'):
-                return redirect(url_for('admin_dashboard'))
+                return redirect(url_for('flask.admin_dashboard'))
 
             return render_template('admin_login.html')
 
-        @self.app.route('/admin/auth/google')
+        @self.blueprint.route('/admin/auth/google')
         def admin_auth_google():
             """Initiate Google OAuth flow."""
             # Build callback URL
-            redirect_uri = url_for('admin_auth_callback', _external=True)
+            redirect_uri = url_for('flask.admin_auth_callback', _external=True)
             logger.info(f"OAuth redirect URI: {redirect_uri}")
             return self.google.authorize_redirect(redirect_uri)
 
-        @self.app.route('/admin/auth/callback')
+        @self.blueprint.route('/admin/auth/callback')
         def admin_auth_callback():
             """Handle Google OAuth callback."""
             try:
@@ -96,23 +105,23 @@ class AdminController:
 
                 logger.info(f"Admin {user_email} logged in successfully")
 
-                return redirect(url_for('admin_dashboard'))
+                return redirect(url_for('flask.admin_dashboard'))
 
             except Exception as e:
                 logger.error(f"OAuth callback error: {e}")
                 return f"Authentication failed: {str(e)}", 500
 
-        @self.app.route('/admin/logout')
+        @self.blueprint.route('/admin/logout')
         def admin_logout():
             """Logout and clear session."""
             user_email = session.get('user_email', 'unknown')
             session.clear()
             logger.info(f"Admin {user_email} logged out")
-            return redirect(url_for('admin_login'))
+            return redirect(url_for('flask.admin_login'))
 
         # API endpoints
 
-        @self.app.route('/admin/api/users')
+        @self.blueprint.route('/admin/api/users')
         @require_admin_auth
         def api_get_users():
             """Get all users with handover status."""
@@ -149,7 +158,7 @@ class AdminController:
                     'error': str(e)
                 }), 500
 
-        @self.app.route('/admin/api/user/<user_id>/block', methods=['POST'])
+        @self.blueprint.route('/admin/api/user/<user_id>/block', methods=['POST'])
         @require_admin_auth
         def api_block_user(user_id):
             """Block AI responses for specific user."""
@@ -175,7 +184,7 @@ class AdminController:
                     'error': str(e)
                 }), 500
 
-        @self.app.route('/admin/api/user/<user_id>/unblock', methods=['POST'])
+        @self.blueprint.route('/admin/api/user/<user_id>/unblock', methods=['POST'])
         @require_admin_auth
         def api_unblock_user(user_id):
             """Unblock AI responses for specific user."""
