@@ -3,7 +3,7 @@ User data models and entities.
 """
 from dataclasses import dataclass
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -17,12 +17,12 @@ class User:
     
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.now()
+            self.created_at = datetime.now(timezone.utc)
         if self.updated_at is None:
-            self.updated_at = datetime.now()
+            self.updated_at = datetime.now(timezone.utc)
 
 
-@dataclass 
+@dataclass
 class Message:
     """Message entity model."""
     content: str
@@ -30,10 +30,10 @@ class Message:
     message_type: str = "text"
     timestamp: Optional[datetime] = None
     reply_token: Optional[str] = None
-    
+
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
 
 
 @dataclass
@@ -45,7 +45,7 @@ class AIResponse:
     explanation: Optional[str] = None
     timestamp: Optional[datetime] = None
     metadata: Optional[dict] = None
-    
+
     # Extended schema fields (optional for backward compatibility)
     intent: Optional[str] = None
     queries: Optional[list] = None
@@ -56,10 +56,10 @@ class AIResponse:
     policy_pii: Optional[str] = None
     policy_escalation: Optional[str] = None
     notes: Optional[str] = None
-    
+
     def __post_init__(self):
         if self.timestamp is None:
-            self.timestamp = datetime.now()
+            self.timestamp = datetime.now(timezone.utc)
         if self.metadata is None:
             self.metadata = {}
             

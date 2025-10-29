@@ -2,7 +2,7 @@
 Google Sheets Service for syncing message history data.
 """
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from src.utils import setup_logger
 from config import config
@@ -191,7 +191,7 @@ class GoogleSheetsService:
                     confidence = ''
 
                 row = [
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp
+                    datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S'),  # Timestamp (UTC)
                     str(msg.get('user_id', '')),                   # User ID
                     str(msg.get('organization_name', '')),         # Organization
                     str(msg.get('message_type', 'text')),          # Message Type

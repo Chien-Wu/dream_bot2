@@ -2,7 +2,7 @@
 Sync Scheduler Service for managing periodic data synchronization.
 """
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from src.services.database_service import DatabaseService
 from src.services.google_sheets_service import GoogleSheetsService
@@ -52,11 +52,12 @@ class SyncScheduler:
             success = self.sheets.sync_message_history(enriched_messages)
 
             if success:
-                # Update last sync time
-                self._update_last_sync_time("message_history")
-                logger.info(f"Successfully synced {len(new_messages)} messages to Google Sheets")
+                # Update last sync time to the latest message timestamp
+                latest_message_time = max(msg.get('created_at') for msg in new_messages)
+                self._update_last_sync_time("message_history", latest_message_time)
+                logger.info(f"Successfully synced {len(enriched_messages)} messages to Google Sheets (latest: {latest_message_time})")
             else:
-                logger.error("Failed to sync messages to Google Sheets")
+                logger.error(f"Failed to sync {len(new_messages)} messages to Google Sheets")
 
             return success
 
@@ -99,11 +100,12 @@ class SyncScheduler:
             success = self.sheets.sync_organization_data(deduplicated_orgs)
 
             if success:
-                # Update last sync time
-                self._update_last_sync_time("organization_data")
-                logger.info(f"Successfully synced {len(updated_organizations)} organizations to Google Sheets")
+                # Update last sync time to the latest organization timestamp
+                latest_org_time = max(org.get('updated_at') for org in updated_organizations)
+                self._update_last_sync_time("organization_data", latest_org_time)
+                logger.info(f"Successfully synced {len(deduplicated_orgs)} organizations to Google Sheets (latest: {latest_org_time})")
             else:
-                logger.error("Failed to sync organizations to Google Sheets")
+                logger.error(f"Failed to sync {len(updated_organizations)} organizations to Google Sheets")
 
             return success
 
@@ -153,13 +155,13 @@ class SyncScheduler:
             if result and result['last_sync_time']:
                 return result['last_sync_time']
             else:
-                # If no previous sync, start from 24 hours ago
-                return datetime.now() - timedelta(hours=24)
+                # If no previous sync, start from 24 hours ago (UTC)
+                return datetime.now(timezone.utc) - timedelta(hours=24)
 
         except Exception as e:
             logger.error(f"Failed to get last sync time: {e}")
-            # Fallback to last hour
-            return datetime.now() - timedelta(hours=1)
+            # Fallback to last hour (UTC)
+            return datetime.now(timezone.utc) - timedelta(hours=1)
 
     def _get_new_messages_since(self, since_time: datetime) -> List[Dict[str, Any]]:
         """Get new message history records since the given time."""
@@ -175,7 +177,7 @@ class SyncScheduler:
                     confidence,
                     created_at
                 FROM message_history
-                WHERE created_at > %s
+                WHERE created_at >= %s
                 ORDER BY created_at ASC
                 LIMIT 1000
             """
@@ -205,7 +207,7 @@ class SyncScheduler:
                     updated_at
                 FROM organization_data
                 WHERE (
-                    updated_at > %s
+                    updated_at >= %s
                     AND (
                         organization_name IS NOT NULL
                         OR reminded_count > 0
@@ -272,10 +274,10 @@ class SyncScheduler:
             logger.error(f"Failed to enrich messages with user data: {e}")
             return messages
 
-    def _update_last_sync_time(self, sync_type: str = "message_history") -> None:
-        """Update the last sync time in database."""
+    def _update_last_sync_time(self, sync_type: str, new_sync_time: datetime) -> None:
+        """Update the last sync time in database using the actual last record timestamp."""
         try:
-            current_time = datetime.now()
+            current_time = datetime.now(timezone.utc)
 
             self.db.execute_query("""
                 INSERT INTO sync_tracking (sync_type, last_sync_time, updated_at)
@@ -283,10 +285,10 @@ class SyncScheduler:
                 ON DUPLICATE KEY UPDATE
                 last_sync_time = VALUES(last_sync_time),
                 updated_at = VALUES(updated_at)
-            """, params=(sync_type, current_time, current_time))
+            """, params=(sync_type, new_sync_time, current_time))
 
-            self.last_sync_time = current_time
-            logger.debug(f"Updated last sync time for {sync_type} to {current_time}")
+            self.last_sync_time = new_sync_time
+            logger.debug(f"Updated last sync time for {sync_type} to {new_sync_time}")
 
         except Exception as e:
             logger.error(f"Failed to update last sync time for {sync_type}: {e}")

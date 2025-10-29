@@ -9,6 +9,7 @@ services:
         max-size: "100m"
         max-file: "5"
     environment:
+      - TZ=UTC
       - ENVIRONMENT=production
       - HOST=0.0.0.0
       - PORT=5000
@@ -49,6 +50,7 @@ services:
         max-size: "50m"
         max-file: "3"
     environment:
+      - TZ=UTC
       - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MYSQL_DATABASE=${MYSQL_DATABASE}
       - MYSQL_USER=${MYSQL_USER}

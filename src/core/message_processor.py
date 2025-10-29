@@ -92,6 +92,16 @@ class MessageProcessor:
             request_msg = messages.get_org_request_message(reminded_count, is_new_user)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
+
+            # Log the organization request to message_history
+            self.db.log_message(
+                user_id=user_id,
+                content=message.content,
+                message_type=message.message_type,
+                ai_response=request_msg,
+                ai_explanation="Organization name requested (first attempt)"
+            )
+
             logger.info(f"Sent organization request to user {user_id} (attempt {reminded_count + 1}, is_new={is_new_user})")
             return
 
@@ -111,6 +121,16 @@ class MessageProcessor:
 
             success_msg = messages.get_org_success_message(is_new_user)
             self.line.send_message(user_id, success_msg, message.reply_token)
+
+            # Log the successful organization extraction
+            self.db.log_message(
+                user_id=user_id,
+                content=message.content,
+                message_type=message.message_type,
+                ai_response=success_msg,
+                ai_explanation=f"Organization extracted: {extracted_org}"
+            )
+
             logger.info(f"Successfully extracted and saved organization '{extracted_org}' for user {user_id} (after {reminded_count + 1} attempts, is_new={is_new_user})")
             return
         else:
@@ -118,6 +138,16 @@ class MessageProcessor:
             request_msg = messages.get_org_request_message(reminded_count, is_new_user)
             self.line.send_message(user_id, request_msg, message.reply_token)
             self.db.increment_reminded_count(user_id)
+
+            # Log the failed extraction attempt
+            self.db.log_message(
+                user_id=user_id,
+                content=message.content,
+                message_type=message.message_type,
+                ai_response=request_msg,
+                ai_explanation=f"Organization extraction failed (attempt {reminded_count + 1})"
+            )
+
             logger.info(f"Organization extraction failed for user {user_id}, asking again (attempt {reminded_count + 1}, is_new={is_new_user})")
             return
     
@@ -225,6 +255,15 @@ class MessageProcessor:
                     notification_type="media"
                 )
 
+                # Log the media message
+                self.db.log_message(
+                    user_id=message.user_id,
+                    content=f"[{message.message_type.upper()}]",
+                    message_type=message.message_type,
+                    ai_response=None,
+                    ai_explanation=f"User sent {message.message_type} file"
+                )
+
                 # Silent handling - no response to user
                 return True
 
@@ -250,25 +289,35 @@ class MessageProcessor:
         """Handle requests for human handover."""
         if not self.line.is_handover_request(message.content):
             return False
-            
+
         try:
             # Set handover flag first
             self.handover_service.set_handover_flag(message.user_id)
-            
+
             self.line.notify_admin(
                 user_id=message.user_id,
                 user_msg=message.content,
                 notification_type="handover"
             )
-            
+
+            handover_msg = "已為您通知管理者，請稍候。"
             self.line.send_message(
                 message.user_id,
-                "已為您通知管理者，請稍候。",
+                handover_msg,
                 message.reply_token
             )
-            
+
+            # Log the handover request
+            self.db.log_message(
+                user_id=message.user_id,
+                content=message.content,
+                message_type=message.message_type,
+                ai_response=handover_msg,
+                ai_explanation="Handover to admin requested"
+            )
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Failed to handle handover request: {e}")
             return True
