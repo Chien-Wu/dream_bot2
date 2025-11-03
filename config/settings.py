@@ -41,18 +41,22 @@ class OpenAIConfig:
     """OpenAI API configuration settings."""
     api_key: Optional[str] = os.getenv('OPENAI_API_KEY')
     confidence_threshold: float = float(os.getenv('AI_CONFIDENCE_THRESHOLD', '0.83'))
-    
-    # Agents API configuration
+
+    # Agents API configuration (Big AI - Main conversation)
     model: str = os.getenv('OPENAI_MODEL', 'gpt-4')
     max_tokens: int = int(os.getenv('OPENAI_MAX_TOKENS', '2048'))
     temperature: float = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
     prompt_id: Optional[str] = os.getenv('OPENAI_PROMPT_ID')
-    prompt_version: str = os.getenv('OPENAI_PROMPT_VERSION', '1')
+    prompt_version: Optional[str] = os.getenv('OPENAI_PROMPT_VERSION') or None  # None = auto-latest
 
     # Organization extraction responsive prompt configuration
     org_extract_prompt_id: Optional[str] = os.getenv('OPENAI_ORG_EXTRACT_PROMPT_ID')
-    org_extract_prompt_version: str = os.getenv('OPENAI_ORG_EXTRACT_PROMPT_VERSION', '1')
-    
+    org_extract_prompt_version: Optional[str] = os.getenv('OPENAI_ORG_EXTRACT_PROMPT_VERSION') or None  # None = auto-latest
+
+    # Small AI - Knowledge Expert (Dream Organization specialist)
+    knowledge_ai_prompt_id: Optional[str] = os.getenv('OPENAI_KNOWLEDGE_AI_PROMPT_ID')
+    knowledge_ai_prompt_version: Optional[str] = os.getenv('OPENAI_KNOWLEDGE_AI_PROMPT_VERSION') or None  # None = auto-latest
+
     def __post_init__(self):
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY must be set")

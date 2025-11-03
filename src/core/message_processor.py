@@ -408,18 +408,23 @@ class MessageProcessor:
 
             # Use responsive prompt if configured, otherwise fallback to chat completions
             if config.openai.org_extract_prompt_id:
-                # Use OpenAI responsive prompts API
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",  # Responsive prompts require gpt-4o-mini or better
-                    messages=[
-                        {"role": "user", "content": user_message}
-                    ],
-                    prompt_id=config.openai.org_extract_prompt_id,
-                    prompt_version=config.openai.org_extract_prompt_version,
-                    max_tokens=100,
-                    temperature=0.1
-                )
-                logger.info(f"Using responsive prompt ID: {config.openai.org_extract_prompt_id} version: {config.openai.org_extract_prompt_version}")
+                # Prepare parameters for OpenAI responsive prompts API
+                prompt_params = {
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": user_message}],
+                    "prompt_id": config.openai.org_extract_prompt_id,
+                    "max_tokens": 100,
+                    "temperature": 0.1
+                }
+
+                # Only include version if specified (None = use latest)
+                if config.openai.org_extract_prompt_version:
+                    prompt_params["prompt_version"] = config.openai.org_extract_prompt_version
+                    logger.info(f"Using org extraction prompt ID: {config.openai.org_extract_prompt_id} version: {config.openai.org_extract_prompt_version}")
+                else:
+                    logger.info(f"Using org extraction prompt ID: {config.openai.org_extract_prompt_id} (latest version)")
+
+                response = client.chat.completions.create(**prompt_params)
             else:
                 # Fallback to traditional chat completions with system prompt
                 response = client.chat.completions.create(

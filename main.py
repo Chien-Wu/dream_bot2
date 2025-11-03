@@ -75,12 +75,18 @@ def create_app() -> Flask:
 
 def setup_dependencies():
     """Configure dependency injection container."""
-    
+
     # Register services as singletons (order matters for dependencies)
     container.register_singleton(DatabaseService)
     container.register_singleton(UserHandoverService)  # Must be before LineService
     container.register_singleton(LineService)
-    container.register_singleton(AgentsAPIService)
+
+    # Register AgentsAPIService manually with LineService injection
+    db_service = container.resolve(DatabaseService)
+    line_service = container.resolve(LineService)
+    agents_api_service = AgentsAPIService(db_service, line_service)
+    container.register_instance(AgentsAPIService, agents_api_service)
+
     container.register_singleton(GoogleSheetsService)
     container.register_singleton(SyncScheduler)
     container.register_singleton(MessageProcessor)
