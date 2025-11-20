@@ -29,8 +29,17 @@ class LineConfig:
     """LINE Bot configuration settings."""
     channel_access_token: Optional[str] = os.getenv('LINE_CHANNEL_ACCESS_TOKEN')
     channel_secret: Optional[str] = os.getenv('LINE_CHANNEL_SECRET')
+
+    # Default admin target (fallback for unknown intents)
     admin_user_id: Optional[str] = os.getenv('LINE_ADMIN_USER_ID')
-    
+
+    # Intent-specific admin targets
+    admin_user_id_donation: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_DONATION')
+    admin_user_id_leader: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_LEADER')
+    admin_user_id_volunteer: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_VOLUNTEER')
+    admin_user_id_mindpeace: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_MINDPEACE')
+    admin_user_id_finance: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_FINANCE')
+
     def __post_init__(self):
         if not self.channel_access_token or not self.channel_secret:
             raise ValueError("LINE_CHANNEL_ACCESS_TOKEN and LINE_CHANNEL_SECRET must be set")

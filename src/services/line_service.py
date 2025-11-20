@@ -261,29 +261,40 @@ class LineService:
             logger.error(f"Failed to push message to {user_id}: {e}")
             raise LineAPIError(f"Push failed: {e}")
 
-    def push_admin_message(self, text: str) -> None:
+    def _push_to_target(self, target_id: str, text: str) -> None:
         """
-        Push message to admin without handover checks.
-        
+        Push message to specific target (user or group) without handover checks.
+
         Args:
-            text: Message text to send to admin
+            target_id: Target user ID or group ID
+            text: Message text to send
         """
-        if not self.config.admin_user_id:
-            logger.warning("Admin user ID not configured, cannot send admin message")
+        if not target_id:
+            logger.warning("Target ID not provided, cannot send message")
             return
-            
+
         try:
             self.messaging_api.push_message(
                 PushMessageRequest(
-                    to=self.config.admin_user_id,
+                    to=target_id,
                     messages=[LineTextMessage(text=text)]
                 )
             )
-            logger.info(f"Pushed admin message")
-            
+            logger.info(f"Pushed message to target {target_id[:8]}...")
+
         except Exception as e:
-            logger.error(f"Failed to push admin message: {e}")
-            raise LineAPIError(f"Admin push failed: {e}")
+            logger.error(f"Failed to push message to target: {e}")
+            raise LineAPIError(f"Push to target failed: {e}")
+
+    def push_admin_message(self, text: str) -> None:
+        """
+        Push message to default admin without handover checks.
+        Legacy method - uses default admin target.
+
+        Args:
+            text: Message text to send to admin
+        """
+        self._push_to_target(self.config.admin_user_id, text)
 
     def _process_text(self, text: str) -> str:
         """
@@ -349,14 +360,54 @@ class LineService:
         error_msg = str(error).lower()
         return "invalid reply token" in error_msg or "reply token" in error_msg
     
-    def notify_admin(self, user_id: str, user_msg: str, 
+    def _get_admin_target_for_intent(self, intent: Optional[str]) -> Optional[str]:
+        """
+        Get the appropriate admin target ID based on AI intent.
+
+        Args:
+            intent: AI-detected intent (e.g., "募款", "領頭雁", etc.)
+
+        Returns:
+            Admin target ID (user or group ID), or None if not configured
+
+        Intent Mapping:
+            - "募款" → admin_user_id_donation
+            - "領頭雁" → admin_user_id_leader
+            - "志工平台" → admin_user_id_volunteer
+            - "心靈沉靜" → admin_user_id_mindpeace
+            - "財會" → admin_user_id_finance
+            - Other/None → admin_user_id (default)
+        """
+        # Intent to config field mapping
+        intent_mapping = {
+            "募款": self.config.admin_user_id_donation,
+            "領頭雁": self.config.admin_user_id_leader,
+            "志工平台": self.config.admin_user_id_volunteer,
+            "心靈沉靜": self.config.admin_user_id_mindpeace,
+            "財會": self.config.admin_user_id_finance,
+        }
+
+        # Get specific admin target for this intent
+        if intent and intent in intent_mapping:
+            target = intent_mapping[intent]
+            if target:  # If configured
+                logger.info(f"Routing notification to intent-specific admin: {intent}")
+                return target
+            else:
+                logger.debug(f"Intent '{intent}' admin not configured, using default")
+
+        # Fallback to default admin
+        return self.config.admin_user_id
+
+    def notify_admin(self, user_id: str, user_msg: str,
                     confidence: float = None,
                     ai_explanation: str = None,
                     notification_type: str = "handover",
-                    ai_query: str = None) -> None:
+                    ai_query: str = None,
+                    intent: Optional[str] = None) -> None:
         """
         Notify admin about user interaction requiring attention.
-        
+
         Args:
             user_id: User ID who sent the message
             user_msg: User's original message
@@ -364,11 +415,15 @@ class LineService:
             ai_explanation: AI's explanation (if any)
             notification_type: Type of notification (handover, new_user, media, ai_error)
             ai_query: AI query to use as keyword (if any)
+            intent: AI-detected intent for routing to specific admin group
         """
-        if not self.config.admin_user_id:
-            logger.warning("Admin user ID not configured, skipping notification")
+        # Get appropriate admin target based on intent
+        admin_target = self._get_admin_target_for_intent(intent)
+
+        if not admin_target:
+            logger.warning("No admin target configured for this intent, skipping notification")
             return
-            
+
         try:
             # Get user nickname and organization name
             user_nickname = self.get_user_nickname(user_id)
@@ -383,10 +438,16 @@ class LineService:
             notification_text = messages.format_admin_notification(
                 user_nickname, org_name, user_msg, keyword, confidence
             )
-            
-            self.push_admin_message(notification_text)
-            logger.info(f"Notified admin about user {user_nickname} ({notification_type})")
-            
+
+            # Add intent information to notification if available
+            if intent:
+                notification_text += f"\n📌 分類: {intent}"
+
+            # Push to specific admin target
+            self._push_to_target(admin_target, notification_text)
+
+            logger.info(f"Notified admin (intent: {intent or 'default'}) about user {user_nickname} ({notification_type})")
+
         except Exception as e:
             logger.error(f"Failed to notify admin: {e}")
             # Don't raise exception to avoid disrupting main flow

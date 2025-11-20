@@ -352,7 +352,8 @@ class MessageProcessor:
                         confidence=ai_response.confidence,
                         ai_explanation=ai_response.explanation,
                         notification_type="low_confidence",
-                        ai_query=ai_query
+                        ai_query=ai_query,
+                        intent=ai_response.intent  # Pass intent for routing
                     )
                 except Exception as e:
                     logger.error(f"Failed to notify admin: {e}")
