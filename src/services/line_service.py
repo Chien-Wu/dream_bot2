@@ -405,35 +405,38 @@ class LineService:
             # Skip group messages
             if (hasattr(event.source, "group_id") and event.source.group_id) or \
                (hasattr(event.source, "room_id") and event.source.room_id):
+                source_type = "group" if hasattr(event.source, "group_id") and event.source.group_id else "room"
+                source_id = event.source.group_id if source_type == "group" else event.source.room_id
+                logger.info(f"Filtered out {source_type} message from {source_id}")
                 return None
             
             message_type = type(event.message).__name__
+            user_id = event.source.user_id
 
-            # Handle media messages - notify admin, no user response
-            if message_type in ["ImageMessageContent", "VideoMessageContent", "AudioMessageContent", "FileMessageContent", "LocationMessageContent"]:
+            # Skip stickers
+            if message_type == "StickerMessageContent":
+                logger.info(f"Skipped sticker from user {user_id}")
+                return None
+
+            # Handle text messages
+            if hasattr(event.message, 'text'):
+                user_input = event.message.text.strip()
+                if not user_input:
+                    return None
+
                 return Message(
-                    content="[Media File]",
-                    user_id=event.source.user_id,
-                    message_type="media",
+                    content=user_input,
+                    user_id=user_id,
+                    message_type="text",
                     reply_token=event.reply_token
                 )
 
-            # Handle stickers and other non-text
-            if message_type == "StickerMessageContent":
-                return None  # Ignore stickers
-
-            if not hasattr(event.message, 'text'):
-                return None  # Ignore other non-text messages
-
-            # Handle text messages
-            user_input = event.message.text.strip()
-            if not user_input:
-                return None
-
+            # Everything else (media, unknown types) -> notify admin
+            logger.info(f"Non-text message type '{message_type}' from user {user_id} - will notify admin")
             return Message(
-                content=user_input,
-                user_id=event.source.user_id,
-                message_type="text",
+                content=f"[{message_type}]",
+                user_id=user_id,
+                message_type="non_text",
                 reply_token=event.reply_token
             )
             

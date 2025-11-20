@@ -246,29 +246,30 @@ class MessageProcessor:
             self._send_error_response(user_id, reply_token)
     
     def _handle_non_text_messages(self, message: Message) -> bool:
-        """Handle non-text messages (images, videos, audio, files)."""
-        if message.message_type in ["image", "video", "audio", "file"]:
+        """Handle non-text messages (media, unknown types)."""
+        if message.message_type == "non_text":
             try:
+                # Notify admin about non-text message
                 self.line.notify_admin(
                     user_id=message.user_id,
-                    user_msg="使用者傳送了媒體檔案",
+                    user_msg=f"使用者傳送了非文字訊息: {message.content}",
                     notification_type="media"
                 )
 
-                # Log the media message
+                # Log the non-text message
                 self.db.log_message(
                     user_id=message.user_id,
-                    content=f"[{message.message_type.upper()}]",
-                    message_type=message.message_type,
+                    content=message.content,
+                    message_type="non_text",
                     ai_response=None,
-                    ai_explanation=f"User sent {message.message_type} file"
+                    ai_explanation=f"User sent non-text message: {message.content}"
                 )
 
                 # Silent handling - no response to user
                 return True
 
             except Exception as e:
-                logger.error(f"Failed to handle media message: {e}")
+                logger.error(f"Failed to handle non-text message: {e}")
                 return True
 
         if message.message_type != "text":
