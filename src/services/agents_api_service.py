@@ -218,9 +218,12 @@ class AgentsAPIService:
 
                 logger.info(f"Function result: {result}")
 
-                # If debug mode is enabled and this is ask_knowledge_expert, push small AI output to user
-                if config.show_ai_debug_info and function_name == "ask_knowledge_expert":
-                    self._push_small_ai_debug_info(user_id, arguments_str, result)
+                # If debug mode is enabled, push small AI output to user
+                if config.show_ai_debug_info:
+                    if function_name == "ask_knowledge_expert":
+                        self._push_small_ai_debug_info(user_id, arguments_str, result)
+                    elif function_name == "check_submission_status":
+                        self._push_submission_ai_debug_info(user_id, arguments_str, result)
 
                 # Prepare result for OpenAI
                 function_results.append({
@@ -272,6 +275,7 @@ class AgentsAPIService:
             function_map = {
                 "get_current_time": ToolFunctions.get_current_time,  # Static method
                 "ask_knowledge_expert": self.tool_functions.ask_knowledge_expert,  # Instance method (needs OpenAI client)
+                "check_submission_status": self.tool_functions.check_submission_status,  # Instance method (needs OpenAI client)
             }
 
             if function_name not in function_map:
@@ -349,6 +353,45 @@ class AgentsAPIService:
 
         except Exception as e:
             logger.error(f"Failed to push small AI debug info: {e}")
+            # Don't raise - debug info failure shouldn't break the main flow
+
+    def _push_submission_ai_debug_info(self, user_id: str, arguments_str: str, result: str) -> None:
+        """
+        Push Submission AI debug information to LINE user when debug mode is enabled.
+
+        Args:
+            user_id: LINE user ID
+            arguments_str: JSON string of function arguments
+            result: Function result (Submission AI response)
+        """
+        try:
+            # Skip if line_service not available
+            if not self.line_service:
+                logger.warning("LineService not available, skipping Submission AI debug info push")
+                return
+
+            import time
+
+            # Parse arguments to get query
+            arguments = json.loads(arguments_str)
+            query = arguments.get("query", "")
+
+            # Build debug message
+            debug_msg = "🔍 Submission AI 回覆：\n"
+            debug_msg += "─" * 30 + "\n"
+            debug_msg += f"📝 查詢：{query}\n"
+            debug_msg += "\n💬 Submission AI 回答：\n"
+            debug_msg += f"{result}\n"
+            debug_msg += "─" * 30
+
+            # Push message
+            time.sleep(0.3)  # Small delay to ensure proper message order
+            self.line_service.push_message(user_id, debug_msg)
+
+            logger.info(f"Pushed Submission AI debug info to user {user_id}")
+
+        except Exception as e:
+            logger.error(f"Failed to push Submission AI debug info: {e}")
             # Don't raise - debug info failure shouldn't break the main flow
 
     def _create_fallback_response(self, response_text: str, user_id: str) -> AIResponse:

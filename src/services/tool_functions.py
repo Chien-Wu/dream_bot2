@@ -147,3 +147,63 @@ class ToolFunctions:
                 "confidence": 0.0,
                 "error": str(e)
             }, ensure_ascii=False)
+
+    def check_submission_status(self, query: str) -> str:
+        """
+        檢查用戶的文件提交狀態或申請相關資訊。
+
+        當用戶詢問關於文件提交、申請狀態、需要準備的文件、或申請流程相關問題時，
+        大 AI 會呼叫此 function 查詢提交系統。
+
+        Args:
+            query: 用戶的查詢內容（純文字），例如：
+                   - "我有提交過財務報表嗎？"
+                   - "申請募款需要什麼文件？"
+                   - "我的申請狀態如何？"
+
+        Returns:
+            str: 提交狀態或申請資訊說明（純文字）
+
+        Examples:
+            >>> tools = ToolFunctions()
+            >>> result = tools.check_submission_status("我有提交過財務報表嗎？")
+            >>> # Returns: "是的，您在2025-10-15提交過財務報表。狀態：已審核通過。"
+        """
+        try:
+            logger.info(f"[Submission AI] Query: {query}")
+
+            # Check if Submission AI is configured
+            if not config.openai.submission_ai_prompt_id:
+                logger.warning("Submission AI prompt ID not configured")
+                return "抱歉，文件提交查詢系統目前尚未設定。請聯繫管理員。"
+
+            # Prepare prompt params (dynamic version support like Knowledge AI)
+            prompt_params = {"id": config.openai.submission_ai_prompt_id}
+            if config.openai.submission_ai_prompt_version:
+                prompt_params["version"] = config.openai.submission_ai_prompt_version
+                logger.info(f"[Submission AI] Using version: {config.openai.submission_ai_prompt_version}")
+            else:
+                logger.info("[Submission AI] Using latest version (auto-update)")
+
+            # Call Submission AI (simple string input)
+            logger.info("[Submission AI] Calling Submission AI...")
+            response = self.client.responses.create(
+                prompt=prompt_params,
+                input=query  # Just pass the query string directly
+            )
+
+            # Extract response text
+            if hasattr(response, 'output_text'):
+                result = response.output_text
+            elif hasattr(response, 'content'):
+                result = response.content
+            else:
+                result = str(response)
+
+            logger.info(f"[Submission AI] Response: {result[:200]}...")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[Submission AI] Error: {e}")
+            return "抱歉，目前無法查詢提交狀態。請稍後再試或聯繫管理員。"

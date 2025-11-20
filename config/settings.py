@@ -57,6 +57,10 @@ class OpenAIConfig:
     knowledge_ai_prompt_id: Optional[str] = os.getenv('OPENAI_KNOWLEDGE_AI_PROMPT_ID')
     knowledge_ai_prompt_version: Optional[str] = os.getenv('OPENAI_KNOWLEDGE_AI_PROMPT_VERSION') or None  # None = auto-latest
 
+    # Small AI - Submission Checker (Document submission status tracker)
+    submission_ai_prompt_id: Optional[str] = os.getenv('OPENAI_SUBMISSION_AI_PROMPT_ID')
+    submission_ai_prompt_version: Optional[str] = os.getenv('OPENAI_SUBMISSION_AI_PROMPT_VERSION') or None  # None = auto-latest
+
     def __post_init__(self):
         if not self.api_key:
             raise ValueError("OPENAI_API_KEY must be set")
