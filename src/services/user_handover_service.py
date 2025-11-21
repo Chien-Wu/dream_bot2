@@ -33,7 +33,7 @@ class UserHandoverService:
                     INSERT INTO user_handover_flags (user_id, expires_at)
                     VALUES (%s, DATE_ADD(NOW(), INTERVAL %s HOUR))
                     ON DUPLICATE KEY UPDATE
-                    expires_at = DATE_ADD(NOW(), INTERVAL %s HOUR),
+                    expires_at = GREATEST(DATE_ADD(NOW(), INTERVAL %s HOUR), expires_at),
                     updated_at = CURRENT_TIMESTAMP
                 """, (user_id, hours, hours))
 
