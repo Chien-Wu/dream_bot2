@@ -13,6 +13,11 @@ from src.services.database_service import DatabaseService
 logger = setup_logger(__name__)
 
 
+class AIValidationError(Exception):
+    """Raised when AI response fails required field validation."""
+    pass
+
+
 @dataclass
 class ConversationMessage:
     role: str  # 'system', 'user', 'assistant'
@@ -123,23 +128,48 @@ class AgentsAPIService:
         try:
             # 清理回覆文字，移除可能的前後文字或Markdown
             response_text = response_text.strip()
-            
+
             # 尋找 JSON 部分
             start_idx = response_text.find('{')
             end_idx = response_text.rfind('}')
-            
+
             if start_idx == -1 or end_idx == -1:
-                logger.warning(f"No JSON found in response: {response_text[:200]}")
-                return self._create_fallback_response(response_text, user_id)
-            
+                logger.error(f"No JSON found in response: {response_text[:200]}")
+                raise AIValidationError("No JSON found in AI response")
+
             json_str = response_text[start_idx:end_idx + 1]
             parsed_json = json.loads(json_str)
-            
-            # 創建 AIResponse 對象
+
+            # STEP 1: Validate required fields exist
+            # Note: 'text' can be empty (intentional silence), but must exist
+            if 'text' not in parsed_json:
+                raise AIValidationError("Missing 'text' field")
+
+            required_fields = ['explanation', 'confidence']
+            missing_fields = [f for f in required_fields if f not in parsed_json]
+
+            if missing_fields:
+                error_msg = f"Missing required fields: {missing_fields}"
+                logger.error(f"AI validation failed: {error_msg}, response: {response_text[:500]}")
+                raise AIValidationError(error_msg)
+
+            # STEP 2: Validate explanation is non-empty
+            if not parsed_json['explanation'] or not str(parsed_json['explanation']).strip():
+                raise AIValidationError("Explanation field cannot be empty")
+
+            # STEP 3: Validate confidence range
+            try:
+                confidence = float(parsed_json['confidence'])
+                if not (0.0 <= confidence <= 1.0):
+                    raise AIValidationError(f"Confidence {confidence} out of range [0.0, 1.0]")
+            except (ValueError, TypeError) as e:
+                raise AIValidationError(f"Invalid confidence value: {parsed_json['confidence']}")
+
+            # STEP 4: Create AIResponse with validated required fields and optional fields
             return AIResponse(
-                text=parsed_json.get("text", ""),
-                confidence=float(parsed_json.get("confidence", 0.0)),
-                explanation=parsed_json.get("explanation"),
+                text=parsed_json['text'],
+                confidence=confidence,
+                explanation=parsed_json['explanation'],
                 user_id=user_id,
                 intent=parsed_json.get("intent"),
                 queries=parsed_json.get("queries", []),
@@ -151,13 +181,16 @@ class AgentsAPIService:
                 policy_escalation=parsed_json.get("policy", {}).get("escalation"),
                 notes=parsed_json.get("notes")
             )
-            
+
         except json.JSONDecodeError as e:
             logger.error(f"JSON parsing error: {e}, response: {response_text[:500]}")
-            return self._create_fallback_response(response_text, user_id)
+            raise AIValidationError(f"Invalid JSON in AI response: {e}")
+        except AIValidationError:
+            # Re-raise validation errors
+            raise
         except Exception as e:
             logger.error(f"Unexpected error parsing response: {e}")
-            return self._create_fallback_response(response_text, user_id)
+            raise AIValidationError(f"Failed to parse AI response: {e}")
     
     def _extract_function_calls(self, response) -> list:
         """
@@ -394,36 +427,6 @@ class AgentsAPIService:
             logger.error(f"Failed to push Submission AI debug info: {e}")
             # Don't raise - debug info failure shouldn't break the main flow
 
-    def _create_fallback_response(self, response_text: str, user_id: str) -> AIResponse:
-        """Create fallback response when JSON parsing fails."""
-        # Try to extract partial data from truncated JSON
-        confidence = 0.5
-        text = response_text
-        explanation = "JSON解析失敗，使用原始回覆"
-        
-        try:
-            # Extract confidence if available in truncated response
-            import re
-            confidence_match = re.search(r'"confidence":\s*([\d.]+)', response_text)
-            if confidence_match:
-                confidence = float(confidence_match.group(1))
-                logger.info(f"Extracted confidence {confidence} from partial JSON")
-            
-            # Extract text if available 
-            text_match = re.search(r'"text":\s*"([^"]*)"', response_text)
-            if text_match:
-                text = text_match.group(1)
-                logger.info("Extracted text from partial JSON")
-                
-        except Exception as e:
-            logger.error(f"Failed to extract partial data from response: {e}")
-        
-        return AIResponse(
-            text=text,
-            confidence=confidence,
-            explanation=explanation,
-            user_id=user_id
-        )
 
     
     

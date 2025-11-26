@@ -362,9 +362,12 @@ class MessageProcessor:
                 self.handover_service.set_handover_flag(message.user_id)
                 logger.info(f"Set handover flag for low confidence response to user {message.user_id}")
             else:
-                # High confidence - send AI response
-                logger.debug(f"Sending high confidence AI response to user {message.user_id}")
-                self.line.send_message(message.user_id, ai_response.text, message.reply_token)
+                # High confidence - send AI response (if non-empty)
+                if ai_response.text and ai_response.text.strip():
+                    logger.debug(f"Sending high confidence AI response to user {message.user_id}")
+                    self.line.send_message(message.user_id, ai_response.text, message.reply_token)
+                else:
+                    logger.info(f"AI returned empty text with high confidence ({ai_response.confidence:.2f}) - intentional silence for user {message.user_id}")
             
             # Push debug info separately if enabled
             if config.show_ai_debug_info:
@@ -391,7 +394,19 @@ class MessageProcessor:
             logger.error(f"Failed to get AI response for user {message.user_id}: {e}")
             import traceback
             logger.error(f"AI response error traceback: {traceback.format_exc()}")
-            self._send_error_response(message.user_id, message.reply_token)
+
+            # Set handover flag (blocks future AI responses)
+            self.handover_service.set_handover_flag(message.user_id)
+            logger.info(f"Set handover flag for user {message.user_id} due to AI error")
+
+            # Notify admin with ai_error type (no technical details to user)
+            self.line.notify_admin(
+                user_id=message.user_id,
+                user_msg=message.content,
+                notification_type="ai_error"
+            )
+
+            # DO NOT send message to user (silent fail)
             return True
     
     def _extract_organization_name(self, user_message: str) -> str:
