@@ -38,7 +38,7 @@ class LineConfig:
     admin_user_id_leader: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_LEADER')
     admin_user_id_volunteer: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_VOLUNTEER')
     admin_user_id_mindpeace: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_MINDPEACE')
-    admin_user_id_finance: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_FINANCE')
+    admin_user_id_system: Optional[str] = os.getenv('LINE_ADMIN_USER_ID_SYSTEM')
 
     def __post_init__(self):
         if not self.channel_access_token or not self.channel_secret:

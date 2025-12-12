@@ -375,7 +375,7 @@ class LineService:
             - "領頭雁" → admin_user_id_leader
             - "志工平台" → admin_user_id_volunteer
             - "心靈沉靜" → admin_user_id_mindpeace
-            - "財會" → admin_user_id_finance
+            - "系統" → admin_user_id_system
             - Other/None → admin_user_id (default)
         """
         # Intent to config field mapping
@@ -384,7 +384,7 @@ class LineService:
             "領頭雁": self.config.admin_user_id_leader,
             "志工平台": self.config.admin_user_id_volunteer,
             "心靈沉靜": self.config.admin_user_id_mindpeace,
-            "財會": self.config.admin_user_id_finance,
+            "系統": self.config.admin_user_id_system,
         }
 
         # Get specific admin target for this intent
