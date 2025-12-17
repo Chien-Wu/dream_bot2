@@ -70,7 +70,8 @@ class AgentsAPIService:
             # 準備API呼叫參數
             kwargs = {
                 "prompt": prompt_params,
-                "input": input_text
+                "input": input_text,
+                "truncation": "auto"  # Auto-truncate from beginning if context exceeds limit
             }
 
             # 如果有上一輪對話，加入previous_response_id
@@ -274,7 +275,8 @@ class AgentsAPIService:
                     "version": self.prompt_version
                 },
                 input=function_results,
-                previous_response_id=initial_response.id
+                previous_response_id=initial_response.id,
+                truncation="auto"  # Auto-truncate from beginning if context exceeds limit
             )
 
             logger.info("Received final response from OpenAI after function execution")
